@@ -32,8 +32,8 @@ def run_chat(patient_id: str, user_message: str) -> dict:
         "Use ferramentas quando necessário. Não inclua identificadores sensíveis."
     )
     messages = [
-        {"role":"system","content": system},
-        {"role":"user","content": user_message},
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_message},
     ]
 
     tools = tool_schemas()
@@ -44,7 +44,7 @@ def run_chat(patient_id: str, user_message: str) -> dict:
 
     if out.get("tool_calls"):
         # Enforce scoping: never trust model-provided patient IDs
-        messages.append({"role":"assistant","content":"","tool_calls": out["tool_calls"]})  # for OpenAI shape
+        messages.append({"role": "assistant", "content": "", "tool_calls": out["tool_calls"]})  # for OpenAI shape
         for tc in out["tool_calls"]:
             name = tc["name"]
             used_tools.append(name)

@@ -15,8 +15,8 @@ dependencies = [
   "pydantic>=2.8.0",
   "python-dotenv>=1.0.1",
   "requests>=2.32.3",
-  "structlog>=24.4.0"
-  # add "openai>=1.40.0" later if/when you switch LLM_PROVIDER=openai
+  "structlog>=24.4.0",
+  "openai>=1.40.0" 
 ]
 
 [tool.setuptools.packages.find]
