@@ -10,8 +10,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e .
 cp .env.example .env
 uvicorn bayleaf_agents.app:create_app --reload --port 8080
-
+```
 
 Health: GET /health
-
 Chat: POST /chat
