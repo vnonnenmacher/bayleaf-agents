@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bayleaf-agents"
+version = "0.1.0"
+description = "Agent service for Bayleaf – provider-agnostic LLM with tool calls"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Bayleaf", email = "dev@bayleaf.example" }]
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "pydantic>=2.8.0",
+  "python-dotenv>=1.0.1",
+  "requests>=2.32.3",
+  "structlog>=24.4.0"
+  # add "openai>=1.40.0" later if/when you switch LLM_PROVIDER=openai
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["bayleaf_agents*"]
