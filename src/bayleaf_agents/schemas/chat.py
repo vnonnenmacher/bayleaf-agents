@@ -9,6 +9,7 @@ class ChatRequest(BaseModel):
     message: str
     locale: str = "pt-BR"
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    conversation_id: Optional[str] = None  # NEW
 
 
 class SafetyInfo(BaseModel):
@@ -21,3 +22,4 @@ class ChatResponse(BaseModel):
     used_tools: List[str] = Field(default_factory=list)
     safety: SafetyInfo = Field(default_factory=SafetyInfo)
     trace_id: str
+    conversation_id: str  # NEW (server returns the persistent id)

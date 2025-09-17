@@ -1,16 +1,32 @@
-version: "3.9"
 services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: bayleaf
+      POSTGRES_PASSWORD: bayleaf
+      POSTGRES_DB: bayleaf_agents
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
   agents:
     build: .
+    depends_on:
+      - db
     environment:
-      - APP_ENV=dev
-      - HOST=0.0.0.0
-      - PORT=8080
-      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
-      - BAYLEAF_BASE_URL=${BAYLEAF_BASE_URL:-https://bayleaf.nonnenmacher.tech}
-      - BAYLEAF_TOKEN=${BAYLEAF_TOKEN:-}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      APP_ENV: dev
+      HOST: 0.0.0.0
+      PORT: 8080
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      BAYLEAF_BASE_URL: ${BAYLEAF_BASE_URL:-https://bayleaf.nonnenmacher.tech}
+      BAYLEAF_TOKEN: ${BAYLEAF_TOKEN:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql+psycopg://bayleaf:bayleaf@db:5432/bayleaf_agents
     ports:
       - "8080:8080"
+
+volumes:
+  pgdata:

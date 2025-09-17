@@ -17,5 +17,10 @@ class Settings(BaseModel):
     BAYLEAF_BASE_URL: str = Field(default=os.getenv("BAYLEAF_BASE_URL", "http://localhost:8000"))
     BAYLEAF_TOKEN: str = Field(default=os.getenv("BAYLEAF_TOKEN", ""))
 
+    DATABASE_URL: str = Field(default=os.getenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://bayleaf:bayleaf@db:5432/bayleaf_agents"
+    ))
+
 
 settings = Settings()
