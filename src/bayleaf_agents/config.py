@@ -22,5 +22,18 @@ class Settings(BaseModel):
         "postgresql+psycopg://bayleaf:bayleaf@db:5432/bayleaf_agents"
     ))
 
+    IDP_ISSUER: str = Field(default=os.getenv("IDP_ISSUER", "https://auth.bayleaf"))
+    IDP_AUDIENCE_AGENT: str = Field(default=os.getenv("IDP_AUDIENCE_AGENT", "agent"))
+    IDP_JWKS_URL: str = Field(default=os.getenv("IDP_JWKS_URL", "https://auth.bayleaf/.well-known/jwks.json"))
+    IDP_ALLOWED_ALGS: str = Field(default=os.getenv("IDP_ALLOWED_ALGS", "RS256,ES256"))
+    REQUIRED_SCOPES: str = Field(default=os.getenv("REQUIRED_SCOPES", "chat.send"))
+
+    # Outbound auth (Agent -> Bayleaf)
+    BAYLEAF_TOKEN: str = Field(default=os.getenv("BAYLEAF_TOKEN", ""))  # static fallback
+    BAYLEAF_TOKEN_URL: str = Field(default=os.getenv("BAYLEAF_TOKEN_URL", ""))  # e.g., https://.../oauth/token
+    BAYLEAF_CLIENT_ID: str = Field(default=os.getenv("BAYLEAF_CLIENT_ID", ""))
+    BAYLEAF_CLIENT_SECRET: str = Field(default=os.getenv("BAYLEAF_CLIENT_SECRET", ""))
+    BAYLEAF_TOKEN_MODE: str = Field(default=os.getenv("BAYLEAF_TOKEN_MODE", "static"))  # static|client_credentials|obo
+
 
 settings = Settings()

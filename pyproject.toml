@@ -20,6 +20,7 @@ dependencies = [
   "SQLAlchemy>=2.0.30",
   "psycopg[binary]>=3.2.1",
   "alembic>=1.13.2",
+  "python-jose>=3.5.0"
 ]
 
 [tool.setuptools.packages.find]

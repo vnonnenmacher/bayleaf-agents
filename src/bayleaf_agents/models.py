@@ -16,13 +16,23 @@ class Role(str, enum.Enum):
 
 class Conversation(Base):
     __tablename__ = "conversations"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    external_id: Mapped[Optional[str]] = mapped_column(String(100), index=True)  # client-provided (conversation_id)
-    patient_id: Mapped[str] = mapped_column(String(100), index=True)
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    external_id: Mapped[Optional[str]] = mapped_column(
+        String(100), index=True
+    )  # client-provided (conversation_id)
+
+    # replaced patient_id with user_id
+    user_id: Mapped[str] = mapped_column(String(100), index=True)
+
     channel: Mapped[str] = mapped_column(String(40), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    messages: Mapped[list["Message"]] = relationship(back_populates="conversation", cascade="all,delete-orphan")
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="conversation", cascade="all,delete-orphan"
+    )
 
 
 class Message(Base):

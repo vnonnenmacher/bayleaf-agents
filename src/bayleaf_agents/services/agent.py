@@ -24,7 +24,7 @@ def get_provider() -> LLMProvider:
 
 
 PROVIDER = get_provider()
-BAYLEAF = BayleafClient(settings.BAYLEAF_BASE_URL, settings.BAYLEAF_TOKEN)
+BAYLEAF = BayleafClient(settings.BAYLEAF_BASE_URL)
 
 
 MAX_HISTORY_MSGS = 20  # simple cap; later replace with token-based trimming

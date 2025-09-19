@@ -1,9 +1,10 @@
+# src/bayleaf_agents/app.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .logging import setup_logging
-from .routers import health, chat
-
+from .routers import health
+from .routers.agents import router as agents_router  # ⬅️ add this
 
 def create_app() -> FastAPI:
     log = setup_logging()
@@ -18,7 +19,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router)
-    app.include_router(chat.router)
+    app.include_router(agents_router)
 
     log.info("app_started", env=settings.APP_ENV, provider=settings.LLM_PROVIDER)
     return app

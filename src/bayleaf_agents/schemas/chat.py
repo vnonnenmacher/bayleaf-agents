@@ -1,25 +1,22 @@
+# src/bayleaf_agents/schemas/chat.py
+from typing import Optional, Literal
 from pydantic import BaseModel, Field
-from typing import Any, Dict, List, Optional
-from .common import Channel
 
 
 class ChatRequest(BaseModel):
-    channel: Channel
-    patient_id: str
-    message: str
-    locale: str = "pt-BR"
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    conversation_id: Optional[str] = None  # NEW
+    channel: Literal['bayleaf_app','whatsapp','partner']
+    message: str = Field(min_length=1)
+    conversation_id: Optional[str] = None
+    lang: Optional[str] = None
 
 
 class SafetyInfo(BaseModel):
-    triage: str = "unknown"
-    advice: Optional[str] = None
+    triage: Literal['non-urgent','urgent','emergency'] = 'non-urgent'
 
 
 class ChatResponse(BaseModel):
     reply: str
-    used_tools: List[str] = Field(default_factory=list)
-    safety: SafetyInfo = Field(default_factory=SafetyInfo)
+    used_tools: list[str]
+    safety: SafetyInfo
     trace_id: str
-    conversation_id: str  # NEW (server returns the persistent id)
+    conversation_id: str
