@@ -22,11 +22,12 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
       BAYLEAF_BASE_URL: ${BAYLEAF_BASE_URL:-https://bayleaf.nonnenmacher.tech}
-      BAYLEAF_TOKEN: ${BAYLEAF_TOKEN:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DATABASE_URL: postgresql+psycopg://bayleaf:bayleaf@db:5432/bayleaf_agents
     ports:
       - "8080:8080"
+    volumes:
+      - .:/app 
 
 volumes:
   pgdata:

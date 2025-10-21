@@ -5,10 +5,10 @@ Provider-agnostic (OpenAI / mock / others), with Postgres for conversation histo
 
 ## Features
 
-* 🔌 Pluggable LLM provider (`mock` for dev, `openai` ready)
-* 🧰 Tool calls to Bayleaf REST (e.g., `patient_summary`, `list_medications`)
-* 💬 Persistent conversations (PostgreSQL + SQLAlchemy + Alembic)
-* 🧾 Structured JSON logs (structlog)
+* Pluggable LLM provider (`mock` for dev, `openai` ready)
+* Tool calls to Bayleaf REST (e.g., `patient_summary`, `list_medications`)
+* Persistent conversations (PostgreSQL + SQLAlchemy + Alembic)
+* Structured JSON logs (structlog)
 
 ## Quick start
 
@@ -86,7 +86,6 @@ LLM_PROVIDER=mock          # mock | openai
 OPENAI_API_KEY=            # if LLM_PROVIDER=openai
 OPENAI_MODEL=gpt-4o
 BAYLEAF_BASE_URL=https://bayleaf.nonnenmacher.tech
-BAYLEAF_TOKEN=
 DATABASE_URL=postgresql+psycopg://bayleaf:bayleaf@db:5432/bayleaf_agents
 LOG_LEVEL=INFO
 ```

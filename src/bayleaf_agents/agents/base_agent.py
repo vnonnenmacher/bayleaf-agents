@@ -1,5 +1,5 @@
 # src/bayleaf_agents/agents/base_agent.py
-import uuid, time, structlog
+import uuid, time, structlog, json
 from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 from ..models import Conversation, Message, Role
@@ -76,10 +76,10 @@ class BaseAgent:
         Map tool name to Bayleaf client call.
         Tools must infer the patient from the bearer token; do not pass IDs.
         """
-        if name == "patient_summary" or name == "current_patient_summary":
-            # BayleafClient should use the token (principal) to scope to the current patient.
-            return self.bayleaf.patient_summary(principal=principal)
-        elif name == "list_medications" or name == "current_medications":
+        if name in ("patient_summary", "current_patient_summary"):
+            # Token-scoped: server infers the patient from the bearer token.
+            return self.bayleaf.current_patient_summary(principal=principal)
+        elif name in ("list_medications", "current_medications"):
             return self.bayleaf.current_medications(principal=principal)
         else:
             return {"error": f"unknown_tool:{name}"}
@@ -108,7 +108,13 @@ class BaseAgent:
             db, external_conversation_id, principal.user_id, channel
         )
 
-        system_prompt = f"You are {self.name}. {self._get_objective(lang)}"
+        system_prompt = (
+            f"You are {self.name}. {self._get_objective(lang)}\n"
+            f"Always respond ONLY in {lang}. If any tool data or user content is in another language, "
+            f"translate it to {lang}.\n"
+            "Format succinctly using short paragraphs and bullet lists when enumerating items. "
+            "Avoid repeating raw JSON or units literally if they are confusing—explain them clearly."
+        )
         messages = [{"role": "system", "content": system_prompt}]
         messages.extend(self._load_history(db, conv.id))
         messages.append({"role": "user", "content": user_message})
@@ -125,6 +131,7 @@ class BaseAgent:
 
         # handle tool calls
         if out.get("tool_calls"):
+            # store simplified tool_calls for debugging
             db.add(
                 Message(
                     conversation_id=conv.id,
@@ -136,22 +143,35 @@ class BaseAgent:
             )
             db.commit()
 
+            # Convert simplified -> OpenAI wire shape
+            oai_tool_calls = []
+            for tc in out["tool_calls"]:
+                oai_tool_calls.append({
+                    "id": tc.get("id", ""),
+                    "type": "function",
+                    "function": {
+                        "name": tc["name"],
+                        "arguments": json.dumps(tc.get("args", {})),
+                    },
+                })
+
             messages.append(
-                {"role": "assistant", "content": "", "tool_calls": out["tool_calls"]}
+                {"role": "assistant", "content": "", "tool_calls": oai_tool_calls}
             )
 
+            # Execute each call and append tool results
             for tc in out["tool_calls"]:
                 name = tc["name"]
                 used_tools.append(name)
 
-                # Token-only: principal carries the JWT; tools infer patient on server
                 result = self._execute_tool(name, principal=principal)
 
+                # persist tool result
                 db.add(
                     Message(
                         conversation_id=conv.id,
                         role=Role.tool,
-                        content=str(result),
+                        content=json.dumps(result, ensure_ascii=False),
                         tool_name=name,
                         tool_result=result,
                     )
@@ -162,7 +182,7 @@ class BaseAgent:
                     {
                         "role": "tool",
                         "tool_call_id": tc.get("id", "tool"),
-                        "content": str(result),
+                        "content": json.dumps(result, ensure_ascii=False),
                     }
                 )
 

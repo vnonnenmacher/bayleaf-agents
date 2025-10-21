@@ -1,0 +1,19 @@
+[flake8]
+min_python_version = 3.12.0
+exclude =
+    .git,
+    __pycache__,
+    .env,
+    .env-py2,
+    **/migrations/*,
+    .venv,
+    venv
+ignore =
+    H233,
+    W504,
+    E402,
+    B009,
+    B010
+extend-ignore = W503
+# https://stackoverflow.com/a/68172142
+max-line-length = 150

@@ -38,19 +38,39 @@ class BayleafClient:
         }
 
     def current_medications(self, principal: Principal) -> List[Dict[str, Any]]:
-        """Server infers patient from token. No query params."""
-        data = self._get("/api/medications/", principal=principal)
-        results = data.get("results", data)  # support both list or paginated dict
-        return [
-            {
+        """
+        Server infers patient from token. No query params.
+        Returns a normalized list shape for the agent to speak about.
+        """
+        # NOTE: trailing slash matters in DRF routing if your project uses it
+        data = self._get("/api/medications/my-medications/", principal=principal)
+
+        items = data.get("results", data)  # support both paginated and plain list
+        normalized = []
+        for m in items or []:
+            med = m.get("medication") or {}
+            unit = m.get("dosage_unit") or {}
+            freq_hours = m.get("frequency_hours")
+
+            normalized.append({
                 "id": m.get("id"),
-                "name": m.get("name"),
-                "dose": m.get("dose"),
-                "route": m.get("route"),
-                "frequency": m.get("frequency"),
-                "status": m.get("status"),
-            } for m in results or []
-        ]
+                "medication": {
+                    "id": med.get("id"),
+                    "name": med.get("name"),
+                    "description": med.get("description"),
+                },
+                "dosage": {
+                    "amount": m.get("dosage_amount"),
+                    "unit_code": unit.get("code"),
+                    "unit_name": unit.get("name"),
+                },
+                "frequency_hours": freq_hours,
+                "instructions": m.get("instructions"),
+                "total_unit_amount": m.get("total_unit_amount"),
+                # optionally add a human-readable frequency like "q8h"
+                "frequency_text": f"q{freq_hours}h" if isinstance(freq_hours, int) else None,
+            })
+        return normalized
 
 
 def tool_schemas() -> list[dict]:

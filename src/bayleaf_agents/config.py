@@ -15,7 +15,6 @@ class Settings(BaseModel):
 
     # Bayleaf API
     BAYLEAF_BASE_URL: str = Field(default=os.getenv("BAYLEAF_BASE_URL", "http://localhost:8000"))
-    BAYLEAF_TOKEN: str = Field(default=os.getenv("BAYLEAF_TOKEN", ""))
 
     DATABASE_URL: str = Field(default=os.getenv(
         "DATABASE_URL",
@@ -29,7 +28,6 @@ class Settings(BaseModel):
     REQUIRED_SCOPES: str = Field(default=os.getenv("REQUIRED_SCOPES", "chat.send"))
 
     # Outbound auth (Agent -> Bayleaf)
-    BAYLEAF_TOKEN: str = Field(default=os.getenv("BAYLEAF_TOKEN", ""))  # static fallback
     BAYLEAF_TOKEN_URL: str = Field(default=os.getenv("BAYLEAF_TOKEN_URL", ""))  # e.g., https://.../oauth/token
     BAYLEAF_CLIENT_ID: str = Field(default=os.getenv("BAYLEAF_CLIENT_ID", ""))
     BAYLEAF_CLIENT_SECRET: str = Field(default=os.getenv("BAYLEAF_CLIENT_SECRET", ""))

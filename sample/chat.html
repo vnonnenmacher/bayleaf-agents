@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Bayleaf • Patient Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#0f172a;
+      --panel:#111827;
+      --muted:#94a3b8;
+      --line:#1f2937;
+      --me:#22c55e;
+      --bot:#334155;
+      --text:#e5e7eb;
+      --bubble-text:#f8fafc;
+      --accent:#60a5fa;
+      --danger:#ef4444;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background:linear-gradient(180deg,#0b1220,#0f172a 35%,#0b1220);
+      font:15px/1.45 system-ui,Segoe UI,Roboto,Arial,sans-serif; color:var(--text);
+      display:flex; justify-content:center; align-items:stretch;
+    }
+
+    /* Phone-like frame */
+    .phone{
+      width:100%; max-width:420px; background:var(--panel);
+      border:1px solid #202938; border-radius:16px; margin:12px;
+      display:flex; flex-direction:column; overflow:hidden;
+      box-shadow:0 20px 60px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.3);
+    }
+
+    /* Header (login) */
+    header{
+      padding:12px 12px 10px; border-bottom:1px solid var(--line);
+      background:linear-gradient(180deg,#0f172a,#0b1220); position:sticky; top:0; z-index:2;
+    }
+    h1{font-size:16px; margin:0 0 8px; font-weight:600; letter-spacing:.2px}
+    .row{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+    label{font-size:12px; color:var(--muted); display:block; margin:6px 0 4px}
+    input,button,textarea{
+      width:100%; border:1px solid #273244; background:#0b1220; color:var(--text);
+      border-radius:10px; padding:10px; outline:none;
+    }
+    input::placeholder, textarea::placeholder{ color:#6b7280 }
+    button{cursor:pointer}
+    .api-inline{display:flex; gap:8px; margin-top:8px}
+    .api-inline input{flex:1}
+    .sub{margin-top:6px; font-size:12px; color:var(--muted); display:flex; gap:8px; align-items:center}
+    .sub .ok{color:#a7f3d0}
+    .btn{background:var(--accent); color:#071425; border:0; font-weight:600; padding:8px 10px; border-radius:8px}
+
+    details{margin-top:6px; color:var(--muted)}
+    details[open]{padding-bottom:6px}
+    summary{cursor:pointer}
+    .mono{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px}
+
+    /* Chat log */
+    .log{
+      height:100%; min-height:260px; padding:12px; overflow:auto;
+      background:
+        radial-gradient(ellipse at 80% -10%, rgba(96,165,250,.08), transparent 50%),
+        radial-gradient(ellipse at 0% 120%, rgba(34,197,94,.06), transparent 50%);
+    }
+    .empty{color:var(--muted); text-align:center; padding:36px 12px; font-size:14px}
+    .msg{max-width:85%; margin:8px 0; padding:10px 12px; border-radius:14px; word-wrap:break-word; position:relative; box-shadow:0 1px 0 rgba(0,0,0,.25)}
+    .msg.me{margin-left:auto; background:var(--me); color:var(--bubble-text); border-bottom-right-radius:6px}
+    .msg.bot{background:var(--bot); color:var(--bubble-text); border-bottom-left-radius:6px}
+    .msg .body{white-space:normal}
+    .msg .body ol, .msg .body ul{margin:6px 0 6px 18px; padding:0}
+    .msg .body li{margin:4px 0}
+    .msg .body strong{font-weight:700}
+    .meta{font-size:11px; color:#d1d5db; opacity:.8; margin-top:6px}
+    .tools{font-size:11px; color:#d1d5db; opacity:.75}
+
+    /* Composer */
+    .composer{border-top:1px solid var(--line); padding:10px; background:linear-gradient(180deg,#0b1220,#0f172a); position:sticky; bottom:0; z-index:2}
+    .input-wrap{display:flex; align-items:center; background:#0b1220; border:1px solid #273244; border-radius:999px; padding:6px 10px}
+    .input-wrap textarea{
+      flex:1; border:none; background:transparent; color:var(--text);
+      font:15px system-ui,Segoe UI,Roboto,Arial,sans-serif;
+      resize:none; min-height:24px; max-height:120px; padding:6px 8px; outline:none;
+    }
+    .input-wrap textarea::placeholder{color:#6b7280}
+    .send{
+      background:var(--accent); border:none; color:#071425; border-radius:50%;
+      width:38px; height:38px; margin-left:6px; display:flex; align-items:center; justify-content:center;
+      font-size:16px; cursor:pointer;
+    }
+    .send:disabled{opacity:.4; cursor:not-allowed}
+  </style>
+</head>
+<body>
+  <div class="phone">
+    <header>
+      <h1>Bayleaf • Patient Chat</h1>
+      <div class="row">
+        <div>
+          <label>Email</label>
+          <input id="email" placeholder="you@example.com" autocomplete="username email" />
+        </div>
+        <div>
+          <label>Password</label>
+          <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
+        </div>
+      </div>
+      <div class="api-inline">
+        <input id="apiBase" placeholder="https://bayleaf.nonnenmacher.tech" value="https://bayleaf.nonnenmacher.tech" />
+        <input id="chatUrl" placeholder="http://127.0.0.1:8080/agents/treatment/chat" value="http://127.0.0.1:8080/agents/treatment/chat" />
+      </div>
+      <div class="sub">
+        <button id="btnToken" class="btn">Get Token</button>
+        <span id="status">Não autenticado.</span>
+      </div>
+      <details>
+        <summary>Mostrar token & claims</summary>
+        <div class="row" style="margin-top:6px">
+          <div>
+            <label>User ID</label>
+            <input id="userId" class="mono" readonly />
+          </div>
+          <div>
+            <label>Patient ID</label>
+            <input id="patientId" class="mono" readonly />
+          </div>
+        </div>
+        <label style="margin-top:6px">Token</label>
+        <textarea id="chatToken" class="mono" rows="3" readonly></textarea>
+      </details>
+    </header>
+
+    <main id="log" class="log">
+      <div class="empty">Faça login e envie uma mensagem abaixo. As mensagens aparecem aqui como um log temporário.</div>
+    </main>
+
+    <form id="composer" class="composer">
+      <div class="input-wrap">
+        <textarea id="msg" placeholder="Digite sua mensagem…" rows="1"></textarea>
+        <button id="send" class="send" type="submit" disabled aria-label="Enviar">➤</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    // ===== Markdown mini-renderer (bold, lists, line breaks) =====
+    function md(src){
+      if(!src) return "";
+      const esc = src.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      // ordered lists "1. item"
+      let out = esc.replace(/(^|\n)\s*(\d+)\.\s+(.*)/g, (m, pre, n, rest) => `${pre}<ol data-md="1"><li>${rest}</li>`);
+      out = out.replace(/<\/li>\n(?!\s*\d+\.)/g, '</li></ol>\n');
+      // unordered lists "- item"
+      out = out.replace(/(^|\n)\s*-\s+(.*)/g, (m, pre, rest) => `${pre}<ul data-md="1"><li>${rest}</li>`);
+      out = out.replace(/<\/li>\n(?!\s*-\s)/g, '</li></ul>\n');
+      out = out.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+      out = out.replace(/\n/g, "<br>");
+      return out;
+    }
+
+    // ===== helpers =====
+    const $ = q => document.querySelector(q);
+    const pad = s => s + "=".repeat((4 - s.length % 4) % 4);
+    function decodeJwtPayload(token){
+      try{
+        const p = token.split(".")[1]; if(!p) return null;
+        const json = atob(pad(p).replace(/-/g,'+').replace(/_/g,'/'));
+        return JSON.parse(json);
+      }catch{ return null; }
+    }
+    function setStatus(txt, ok=false){ $("#status").textContent = txt; $("#status").className = ok ? "ok" : ""; }
+    function timeStr(){ const d=new Date(); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+
+    // ===== state =====
+    let token = "";
+    const messages = []; // {role:'user'|'assistant', text, tools?:[]}
+
+    // ===== render =====
+    function render(){
+      const log = $("#log");
+      log.innerHTML = "";
+      if(!messages.length){
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = "Converse com o agente. Seu histórico aparece aqui.";
+        log.appendChild(empty);
+      } else {
+        messages.forEach(m=>{
+          const bubble = document.createElement("div");
+          const isUser = m.role === "user";
+          bubble.className = "msg " + (isUser ? "me" : "bot");
+
+          const body = document.createElement("div");
+          body.className = "body";
+          body.innerHTML = isUser ? m.text : md(m.text);
+          bubble.appendChild(body);
+
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          meta.innerHTML = `${timeStr()}${m.tools?.length ? ` • <span class="tools">tools: ${m.tools.join(", ")}</span>` : ""}`;
+          bubble.appendChild(meta);
+
+          log.appendChild(bubble);
+        });
+        log.scrollTop = log.scrollHeight + 512;
+      }
+      $("#send").disabled = !token || !$("#msg").value.trim();
+    }
+
+    // ===== network =====
+    async function post(url, body){
+      const res = await fetch(url, {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify(body),
+        credentials:"omit",
+      });
+      const text = await res.text();
+      let json; try{ json = JSON.parse(text); } catch { json = { raw: text }; }
+      return { ok: res.ok, status: res.status, json, text };
+    }
+
+    // ===== auth =====
+    $("#btnToken").addEventListener("click", async ()=>{
+      const base = $("#apiBase").value.trim().replace(/\/+$/,'');
+      const email = $("#email").value.trim();
+      const password = $("#password").value;
+      if(!email || !password){ setStatus("Informe email e senha."); return; }
+
+      setStatus("Solicitando token…");
+      const r = await post(`${base}/api/users/chat-token/`, { email, password });
+      if(!r.ok){ setStatus(`Falha (${r.status})`); return; }
+
+      token = r.json.access_token || "";
+      $("#chatToken").value = token;
+      const p = decodeJwtPayload(token) || {};
+      $("#userId").value = p.user_id ?? p.sub ?? "";
+      $("#patientId").value = p.patient_id ?? "";
+      setStatus(`OK. Expira em ${r.json.expires_in}s.`, true);
+      render();
+    });
+
+    // Enter envia; Shift+Enter quebra linha
+    $("#msg").addEventListener("keydown", (e)=>{
+      if(e.key === "Enter" && !e.shiftKey){
+        e.preventDefault();
+        $("#composer").requestSubmit();
+      }
+    });
+    $("#msg").addEventListener("input", render);
+
+    // ===== chat =====
+    $("#composer").addEventListener("submit", async (e)=>{
+      e.preventDefault();
+      const text = $("#msg").value.trim();
+      if(!text) return;
+      if(!token){ setStatus("Faça login para enviar."); return; }
+
+      messages.push({ role:"user", text });
+      $("#msg").value = "";
+      render();
+
+      setStatus("Enviando…");
+      try{
+        const url = $("#chatUrl").value.trim();
+        const res = await fetch(url, {
+          method:"POST",
+          headers:{
+            "Content-Type":"application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            channel: "bayleaf_app",
+            patient_id: null,
+            message: text,
+            conversation_id: null,
+            lang: "pt-BR"
+          })
+        });
+        const txt = await res.text();
+        let json; try{ json = JSON.parse(txt); } catch { json = { reply: txt }; }
+
+        if(res.ok){
+          messages.push({
+            role:"assistant",
+            text: json.reply ?? "(sem resposta)",
+            tools: json.used_tools || []
+          });
+          setStatus("OK", true);
+        }else{
+          messages.push({ role:"assistant", text:`[Erro ${res.status}] ${txt}`, tools:[] });
+          setStatus(`Erro HTTP ${res.status}`);
+        }
+      }catch(err){
+        messages.push({ role:"assistant", text:`[Network error] ${String(err)}`, tools:[] });
+        setStatus("Erro de rede");
+      }
+      render();
+    });
+
+    // first paint
+    render();
+  </script>
+</body>
+</html>
