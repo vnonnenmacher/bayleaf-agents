@@ -14,6 +14,7 @@ services:
     build: .
     depends_on:
       - db
+      - presidio-analyzer
     environment:
       APP_ENV: dev
       HOST: 0.0.0.0
@@ -24,10 +25,23 @@ services:
       BAYLEAF_BASE_URL: ${BAYLEAF_BASE_URL:-https://bayleaf.nonnenmacher.tech}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DATABASE_URL: postgresql+psycopg://bayleaf:bayleaf@db:5432/bayleaf_agents
+      PHI_FILTER_URL: http://presidio-analyzer:3000/analyze
     ports:
       - "8080:8080"
     volumes:
       - .:/app 
+
+  presidio-analyzer:
+    image: mcr.microsoft.com/presidio-analyzer:latest
+    environment:
+      ANALYZER_DEFAULT_MODEL_LANG: en
+      PYTHONIOENCODING: utf-8
+      PRESIDIO_LOG_LEVEL: DEBUG
+      ANALYZER_LOG_LEVEL: DEBUG
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "8001:3000"
+
 
 volumes:
   pgdata:

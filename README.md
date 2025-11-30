@@ -19,6 +19,16 @@ cp .env.example .env   # set your envs (OPTIONAL for mock)
 docker compose up --build
 ```
 
+This also brings up a Presidio analyzer sidecar (spaCy-based) listening on `http://presidio-analyzer:3000/analyze` and exposed locally on `http://localhost:8001/analyze`. The agent calls it via `PHI_FILTER_URL`.
+
+If you hit it manually, include `language`:
+
+```bash
+curl -sS -X POST http://localhost:8001/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Alice email alice@example.com", "language":"en"}'
+```
+
 ### Health
 
 ```bash
@@ -85,6 +95,9 @@ PORT=8080
 LLM_PROVIDER=mock          # mock | openai
 OPENAI_API_KEY=            # if LLM_PROVIDER=openai
 OPENAI_MODEL=gpt-4o
+PHI_FILTER_URL=http://localhost:8001/analyze  # spaCy + Presidio sidecar
+PHI_FILTER_TIMEOUT=4
+PHI_FILTER_ENTITIES=PERSON,EMAIL_ADDRESS,PHONE_NUMBER,US_SSN
 BAYLEAF_BASE_URL=https://bayleaf.nonnenmacher.tech
 DATABASE_URL=postgresql+psycopg://bayleaf:bayleaf@db:5432/bayleaf_agents
 LOG_LEVEL=INFO

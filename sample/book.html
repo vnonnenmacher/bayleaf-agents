@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Bayleaf • Agent Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#0f172a;
+      --panel:#111827;
+      --muted:#94a3b8;
+      --line:#1f2937;
+      --me:#22c55e;
+      --bot:#334155;
+      --text:#e5e7eb;
+      --bubble-text:#f8fafc;
+      --accent:#60a5fa;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background:linear-gradient(180deg,#0b1220,#0f172a 35%,#0b1220);
+      font:15px/1.45 system-ui,Segoe UI,Roboto,Arial,sans-serif; color:var(--text);
+      display:flex; justify-content:center; align-items:stretch;
+    }
+    .phone{
+      width:100%; max-width:420px; background:var(--panel);
+      border:1px solid #202938; border-radius:16px; margin:12px;
+      display:flex; flex-direction:column; overflow:hidden;
+      box-shadow:0 20px 60px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.3);
+    }
+    header{
+      padding:12px 12px 10px; border-bottom:1px solid var(--line);
+      background:linear-gradient(180deg,#0f172a,#0b1220); position:sticky; top:0; z-index:2;
+    }
+    h1{font-size:16px; margin:0 0 8px; font-weight:600; letter-spacing:.2px}
+    label{font-size:12px; color:var(--muted); display:block; margin:6px 0 4px}
+    input{
+      width:100%; border:1px solid #273244; background:#0b1220; color:var(--text);
+      border-radius:10px; padding:10px; outline:none;
+    }
+    .sub{margin-top:6px; font-size:12px; color:var(--muted)}
+
+    .log{
+      height:100%; min-height:260px; padding:12px; overflow:auto;
+      background:
+        radial-gradient(ellipse at 80% -10%, rgba(96,165,250,.08), transparent 50%),
+        radial-gradient(ellipse at 0% 120%, rgba(34,197,94,.06), transparent 50%);
+    }
+    .empty{color:var(--muted); text-align:center; padding:36px 12px; font-size:14px}
+    .msg{max-width:85%; margin:8px 0; padding:10px 12px; border-radius:14px; word-wrap:break-word; position:relative; box-shadow:0 1px 0 rgba(0,0,0,.25)}
+    .msg.me{margin-left:auto; background:var(--me); color:var(--bubble-text); border-bottom-right-radius:6px}
+    .msg.bot{background:var(--bot); color:var(--bubble-text); border-bottom-left-radius:6px}
+    .meta{font-size:11px; color:#d1d5db; opacity:.8; margin-top:6px}
+
+    .composer{border-top:1px solid var(--line); padding:10px; background:linear-gradient(180deg,#0b1220,#0f172a); position:sticky; bottom:0; z-index:2}
+    .input-wrap{display:flex; align-items:center; background:#0b1220; border:1px solid #273244; border-radius:999px; padding:6px 10px}
+    textarea{
+      flex:1; border:none; background:transparent; color:var(--text);
+      resize:none; min-height:24px; max-height:120px; padding:6px 8px; outline:none;
+    }
+    .send{
+      background:var(--accent); border:none; color:#071425; border-radius:50%;
+      width:38px; height:38px; margin-left:6px; display:flex; align-items:center; justify-content:center;
+      font-size:16px; cursor:pointer;
+    }
+  </style>
+</head>
+<body>
+
+<div class="phone">
+
+<header>
+  <h1>Bayleaf • Agent Chat</h1>
+  <label>Endpoint</label>
+  <input id="chatUrl" value="http://127.0.0.1:8080/agents/appointment/chat" />
+  <div class="sub">This chat sends a fake JWT for debugging only.</div>
+</header>
+
+<main id="log" class="log">
+  <div class="empty">Start by sending a message below.</div>
+</main>
+
+<form id="composer" class="composer">
+  <div class="input-wrap">
+    <textarea id="msg" placeholder="Type your message…" rows="1"></textarea>
+    <button id="send" class="send" type="submit">➤</button>
+  </div>
+</form>
+
+</div>
+
+<script>
+const $ = q => document.querySelector(q);
+
+// Enable "Enter to Send" immediately
+$("#msg").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    $("#send").click();
+  }
+});
+
+function md(x){ return x.replace(/\n/g,"<br>"); }
+function timeStr(){ return new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+
+const messages = [];
+const fakeToken =
+  "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJ1c2VyX2lkIjoxLCJwYXRpZW50X2lkIjoxfQ.";
+
+let conversationId = null;
+
+function render(){
+  const log = $("#log");
+  log.innerHTML = "";
+  if(!messages.length){
+    log.innerHTML = '<div class="empty">Start by sending a message below.</div>';
+  } else {
+    messages.forEach(m=>{
+      log.innerHTML += `
+        <div class="msg ${m.role}">
+          <div class="body">${m.role === "me" ? m.text : md(m.text)}</div>
+          <div class="meta">${timeStr()}</div>
+        </div>`;
+    });
+    log.scrollTop = log.scrollHeight + 512;
+  }
+}
+
+$("#composer").addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  const text = $("#msg").value.trim();
+  if(!text) return;
+
+  const url = $("#chatUrl").value.trim();
+
+  messages.push({ role:"me", text });
+  $("#msg").value = "";
+  render();
+
+  const body = {
+    channel: "bayleaf_app",
+    patient_id: null,
+    message: text,
+    conversation_id: conversationId,
+    lang: "en-US"
+  };
+
+  const res = await fetch(url, {
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "Authorization": `Bearer ${fakeToken}`
+    },
+    body: JSON.stringify(body)
+  });
+
+  const raw = await res.text();
+  let json;
+  try { json = JSON.parse(raw); } catch { json = { reply: raw }; }
+
+  if (json.conversation_id) {
+    conversationId = json.conversation_id;
+    console.log("Conversation ID:", conversationId);
+  }
+
+  messages.push({
+    role:"bot",
+    text: json.reply ?? "(no response)"
+  });
+
+  render();
+});
+
+render();
+</script>
+
+</body>
+</html>
