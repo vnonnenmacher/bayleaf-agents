@@ -1,11 +1,13 @@
 # src/bayleaf_agents/agents/treatment_agent.py
 from .base_agent import BaseAgent
+from .state_handlers import TreatmentStateHandler
 from ..llm.base import LLMProvider
 from ..tools.bayleaf import BayleafClient
+from ..services.phi_filter import PHIFilterClient
 
 
 class TreatmentAgent(BaseAgent):
-    def __init__(self, provider: LLMProvider, bayleaf: BayleafClient):
+    def __init__(self, provider: LLMProvider, bayleaf: BayleafClient, phi_filter: PHIFilterClient | None = None):
         super().__init__(
             name="Treatment Agent",
             objective={
@@ -32,4 +34,6 @@ class TreatmentAgent(BaseAgent):
             },
             provider=provider,
             bayleaf=bayleaf,
+            phi_filter=phi_filter,
+            state_handler=TreatmentStateHandler(),
         )

@@ -13,6 +13,12 @@ class Settings(BaseModel):
     OPENAI_API_KEY: str = Field(default=os.getenv("OPENAI_API_KEY", ""))
     OPENAI_MODEL: str = Field(default=os.getenv("OPENAI_MODEL", "gpt-4o"))
 
+    # PHI filter (spaCy + Presidio sidecar)
+    PHI_FILTER_URL: str = Field(default=os.getenv("PHI_FILTER_URL", "http://localhost:8001/analyze"))
+    PHI_FILTER_TIMEOUT: int = Field(default=int(os.getenv("PHI_FILTER_TIMEOUT", "4")))
+    # Default PHI entities; DATE_TIME removed (not treated as PHI in this flow)
+    PHI_FILTER_ENTITIES: str = Field(default=os.getenv("PHI_FILTER_ENTITIES", "PERSON,EMAIL_ADDRESS,PHONE_NUMBER,US_SSN"))
+
     # Bayleaf API
     BAYLEAF_BASE_URL: str = Field(default=os.getenv("BAYLEAF_BASE_URL", "http://localhost:8000"))
 

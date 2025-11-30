@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..schemas.chat import ChatRequest, ChatResponse, SafetyInfo
 from ..services.agent_registry import discover_agents
-from ..services.factories import get_provider, get_bayleaf
+from ..services.factories import get_provider, get_bayleaf, get_phi_filter
 from ..auth.deps import require_auth, Principal
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -17,13 +17,14 @@ for slug, AgentCls in _AGENT_CLASSES.items():
         principal: Principal = Depends(require_auth()),
         _AgentCls=AgentCls,
     ):
-        agent = _AgentCls(provider=get_provider(), bayleaf=get_bayleaf())
+        agent = _AgentCls(provider=get_provider(), bayleaf=get_bayleaf(), phi_filter=get_phi_filter())
         result = agent.chat(
             db=db,
             channel=req.channel,
             user_message=req.message,
             external_conversation_id=req.conversation_id,
             principal=principal,  # token goes through; server infers patient
+            lang=req.lang or "pt-BR",
         )
         safety = SafetyInfo(triage="non-urgent")
         return ChatResponse(

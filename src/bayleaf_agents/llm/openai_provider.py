@@ -15,12 +15,18 @@ class OpenAIProvider(LLMProvider):
         self.name = f"openai:{model}"
 
     def chat(self, messages: List[Dict[str, str]], tools: List[ToolSchema]) -> ChatOutput:
-        resp = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            tools=_to_oai_tools(tools),
-            temperature=0.2,
-        )
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "tools": _to_oai_tools(tools),
+            "temperature": 0.2,
+        }
+        try:
+            print(f"SENDING TO OPENAI: {json.dumps(payload, ensure_ascii=False)}")
+        except Exception:
+            print("SENDING TO OPENAI: <unserializable payload>")
+
+        resp = self.client.chat.completions.create(**payload)
         msg = resp.choices[0].message
         out: ChatOutput = {"reply": msg.content or "", "tool_calls": []}
         if msg.tool_calls:
