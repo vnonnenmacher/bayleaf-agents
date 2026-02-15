@@ -176,11 +176,12 @@ class BayleafClient:
         service_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         params: Dict[str, Any] = {}
-        # Always send an end_date; default to the same day as start_date (or today).
-        start = start_date or date.today().isoformat()
-        end = end_date or start
-        params["start_date"] = start
-        params["end_date"] = end
+        # Only include date filters when the caller supplied at least one.
+        if start_date or end_date:
+            start = start_date or end_date
+            end = end_date or start
+            params["start_date"] = start
+            params["end_date"] = end
         if service_id is not None:
             params["services"] = service_id
         else:
@@ -384,6 +385,12 @@ class BayleafClient:
             bearer_token=access_token,
         )
         self.log.info("book_appointment_response", data=data)
+        if isinstance(data, dict) and data.get("error"):
+            return {
+                "error": data.get("error"),
+                "status_code": data.get("status_code"),
+                "details": data.get("details"),
+            }
         return {
             "appointment_id": data.get("id") or data.get("appointment_id"),
             "slot_id": data.get("slot_id", slot_id) or data.get("service_slot_id", slot_id),

@@ -80,6 +80,7 @@ class BaseAgent:
             "last_professionals_count": len(state.get("last_professionals", [])) if isinstance(state.get("last_professionals"), list) else 0,
             "last_specializations_count": len(state.get("last_specializations", [])) if isinstance(state.get("last_specializations"), list) else 0,
             "last_booking": state.get("last_booking", {}).get("appointment_id") if isinstance(state.get("last_booking"), dict) else None,
+            "last_booking_error": state.get("last_booking_error", {}).get("status_code") if isinstance(state.get("last_booking_error"), dict) else None,
         }
         return json.dumps(summary, ensure_ascii=False)
 

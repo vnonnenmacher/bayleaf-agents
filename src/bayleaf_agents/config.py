@@ -3,10 +3,10 @@ from pydantic import BaseModel, Field
 
 
 class Settings(BaseModel):
-    APP_ENV: str = Field(default=os.getenv("APP_ENV", "dev"))
+    APP_ENV: str = Field(default=os.getenv("APP_ENV", "prod"))
     HOST: str = Field(default=os.getenv("HOST", "0.0.0.0"))
     PORT: int = Field(default=int(os.getenv("PORT", "8080")))
-    LOG_LEVEL: str = Field(default=os.getenv("LOG_LEVEL", "INFO"))
+    LOG_LEVEL: str = Field(default=os.getenv("LOG_LEVEL", "DEBUG"))
 
     # LLM
     LLM_PROVIDER: str = Field(default=os.getenv("LLM_PROVIDER", "mock"))  # mock | openai

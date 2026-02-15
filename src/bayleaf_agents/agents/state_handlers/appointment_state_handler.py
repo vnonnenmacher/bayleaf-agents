@@ -130,8 +130,13 @@ class AppointmentStateHandler(BaseStateHandler):
                 changed = True
 
         elif tool_name == "book_appointment":
-            state["selected_slot_id"] = args.get("slot_id")
-            state["last_booking"] = result if isinstance(result, dict) else {"result": result}
+            if isinstance(result, dict) and result.get("error"):
+                state["last_booking_error"] = result
+                state.pop("last_booking", None)
+            else:
+                state["selected_slot_id"] = args.get("slot_id")
+                state["last_booking"] = result if isinstance(result, dict) else {"result": result}
+                state.pop("last_booking_error", None)
             changed = True
 
         return changed

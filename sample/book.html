@@ -2,78 +2,208 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Bayleaf • Agent Chat</title>
+  <title>Book Appointment Agent</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
   <style>
-    :root{
-      --bg:#0f172a;
-      --panel:#111827;
-      --muted:#94a3b8;
-      --line:#1f2937;
-      --me:#22c55e;
-      --bot:#334155;
-      --text:#e5e7eb;
-      --bubble-text:#f8fafc;
-      --accent:#60a5fa;
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0; background:linear-gradient(180deg,#0b1220,#0f172a 35%,#0b1220);
-      font:15px/1.45 system-ui,Segoe UI,Roboto,Arial,sans-serif; color:var(--text);
-      display:flex; justify-content:center; align-items:stretch;
-    }
-    .phone{
-      width:100%; max-width:420px; background:var(--panel);
-      border:1px solid #202938; border-radius:16px; margin:12px;
-      display:flex; flex-direction:column; overflow:hidden;
-      box-shadow:0 20px 60px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.3);
-    }
-    header{
-      padding:12px 12px 10px; border-bottom:1px solid var(--line);
-      background:linear-gradient(180deg,#0f172a,#0b1220); position:sticky; top:0; z-index:2;
-    }
-    h1{font-size:16px; margin:0 0 8px; font-weight:600; letter-spacing:.2px}
-    label{font-size:12px; color:var(--muted); display:block; margin:6px 0 4px}
-    input{
-      width:100%; border:1px solid #273244; background:#0b1220; color:var(--text);
-      border-radius:10px; padding:10px; outline:none;
-    }
-    .sub{margin-top:6px; font-size:12px; color:var(--muted)}
+    :root {
+      /* Claude-like soft palette */
+      --bg: #f3f2fa;
+      --panel: #ffffff;
+      --muted: #8d8da1;
+      --line: #e7e6f1;
 
-    .log{
-      height:100%; min-height:260px; padding:12px; overflow:auto;
-      background:
-        radial-gradient(ellipse at 80% -10%, rgba(96,165,250,.08), transparent 50%),
-        radial-gradient(ellipse at 0% 120%, rgba(34,197,94,.06), transparent 50%);
-    }
-    .empty{color:var(--muted); text-align:center; padding:36px 12px; font-size:14px}
-    .msg{max-width:85%; margin:8px 0; padding:10px 12px; border-radius:14px; word-wrap:break-word; position:relative; box-shadow:0 1px 0 rgba(0,0,0,.25)}
-    .msg.me{margin-left:auto; background:var(--me); color:var(--bubble-text); border-bottom-right-radius:6px}
-    .msg.bot{background:var(--bot); color:var(--bubble-text); border-bottom-left-radius:6px}
-    .meta{font-size:11px; color:#d1d5db; opacity:.8; margin-top:6px}
+      --me: #c8b3ff; 
+      --bot: #eceafb;
+      --text: #262633;
+      --bubble-text: #1b1b22;
 
-    .composer{border-top:1px solid var(--line); padding:10px; background:linear-gradient(180deg,#0b1220,#0f172a); position:sticky; bottom:0; z-index:2}
-    .input-wrap{display:flex; align-items:center; background:#0b1220; border:1px solid #273244; border-radius:999px; padding:6px 10px}
-    textarea{
-      flex:1; border:none; background:transparent; color:var(--text);
-      resize:none; min-height:24px; max-height:120px; padding:6px 8px; outline:none;
+      --accent: #8a63f6;
     }
-    .send{
-      background:var(--accent); border:none; color:#071425; border-radius:50%;
-      width:38px; height:38px; margin-left:6px; display:flex; align-items:center; justify-content:center;
-      font-size:16px; cursor:pointer;
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #f3f2fa, #eceaf7 50%, #f7f6fc);
+      font: 15px/1.45 system-ui, Segoe UI, Roboto, Arial, sans-serif;
+      color: var(--text);
+
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    /* FULL HEIGHT CHAT WRAPPER */
+    .phone {
+      width: 100%;
+      max-width: 520px;
+      height: 100vh;               /* fill page vertically */
+      background: var(--panel);
+      border-radius: 22px;
+
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+
+      border: 1px solid #e3e1ef;
+      box-shadow: 0 20px 40px rgba(0,0,0,.08), 0 8px 20px rgba(0,0,0,.04);
+    }
+
+    header {
+      padding: 18px 16px 12px;
+      border-bottom: 1px solid var(--line);
+      background: white;
+    }
+
+    h1 {
+      font-size: 18px;
+      margin: 0 0 10px;
+      font-weight: 600;
+      color: #262633;
+    }
+
+    label {
+      font-size: 12px;
+      color: var(--muted);
+      display: block;
+      margin: 4px 0 4px;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #faf9ff;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 9px 10px;
+      outline: none;
+      transition: border .2s;
+    }
+    input:focus {
+      border-color: var(--accent);
+      background: white;
+    }
+
+    .sub {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* CHAT LOG AREA */
+    .log {
+      flex: 1;                       /* grow to fill vertical space */
+      padding: 20px;
+      overflow-y: auto;
+      background: white;
+    }
+
+    .empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 40px 12px;
+      font-size: 14px;
+    }
+
+    /* Chat bubbles */
+    .msg {
+      max-width: 85%;
+      margin: 10px 0;
+      padding: 12px 14px;
+      border-radius: 18px;
+      word-wrap: break-word;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    }
+
+    .msg.me {
+      margin-left: auto;
+      background: var(--me);
+      color: #1d133a;
+      border-bottom-right-radius: 6px;
+    }
+
+    .msg.bot {
+      background: var(--bot);
+      color: var(--bubble-text);
+      border-bottom-left-radius: 6px;
+    }
+
+    .meta {
+      font-size: 11px;
+      color: var(--muted);
+      opacity: 0.8;
+      margin-top: 6px;
+    }
+
+    /* MESSAGE COMPOSER */
+    .composer {
+      border-top: 1px solid var(--line);
+      padding: 14px;
+      background: white;
+    }
+
+    .input-wrap {
+      display: flex;
+      align-items: center;
+      background: #faf9ff;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 12px;
+      transition: border .25s, box-shadow .25s;
+    }
+
+    .input-wrap:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(138,99,246,.15);
+      background: white;
+    }
+
+    textarea {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      resize: none;
+      min-height: 26px;
+      max-height: 120px;
+      padding: 6px 8px;
+      outline: none;
+      font-size: 15px;
+    }
+
+    .send {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      border: none;
+      margin-left: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      cursor: pointer;
+      box-shadow: 0 3px 8px rgba(138,99,246,.35);
+      transition: background .2s;
+    }
+    .send:hover {
+      background: #7c56e8;
     }
   </style>
 </head>
+
 <body>
 
 <div class="phone">
 
 <header>
-  <h1>Bayleaf • Agent Chat</h1>
+  <h1>Book Appointment Agent</h1>
   <label>Endpoint</label>
-  <input id="chatUrl" value="http://127.0.0.1:8080/agents/appointment/chat" />
+  <input id="chatUrl" value="https://agents.nonnenmacher.tech/agents/appointment/chat" />
   <div class="sub">This chat sends a fake JWT for debugging only.</div>
 </header>
 
@@ -91,9 +221,12 @@
 </div>
 
 <script>
+/* ---------------------------------------
+   DO NOT MODIFY — ORIGINAL LOGIC INTACT
+----------------------------------------*/
+
 const $ = q => document.querySelector(q);
 
-// Enable "Enter to Send" immediately
 $("#msg").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
@@ -161,7 +294,6 @@ $("#composer").addEventListener("submit", async (e)=>{
 
   if (json.conversation_id) {
     conversationId = json.conversation_id;
-    console.log("Conversation ID:", conversationId);
   }
 
   messages.push({
