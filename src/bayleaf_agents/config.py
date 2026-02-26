@@ -39,5 +39,13 @@ class Settings(BaseModel):
     BAYLEAF_CLIENT_SECRET: str = Field(default=os.getenv("BAYLEAF_CLIENT_SECRET", ""))
     BAYLEAF_TOKEN_MODE: str = Field(default=os.getenv("BAYLEAF_TOKEN_MODE", "static"))  # static|client_credentials|obo
 
+    # Qdrant (document indexing)
+    QDRANT_URL: str = Field(default=os.getenv("QDRANT_URL", "http://localhost:6333"))
+    QDRANT_COLLECTION: str = Field(default=os.getenv("QDRANT_COLLECTION", "documents"))
+    QDRANT_DISTANCE: str = Field(default=os.getenv("QDRANT_DISTANCE", "Cosine"))
+    QDRANT_TIMEOUT: int = Field(default=int(os.getenv("QDRANT_TIMEOUT", "20")))
+    EMBEDDING_MODELS: str = Field(default=os.getenv("EMBEDDING_MODELS", "intfloat/multilingual-e5-base"))
+    EMBEDDING_DEFAULT_MODEL: str = Field(default=os.getenv("EMBEDDING_DEFAULT_MODEL", ""))
+
 
 settings = Settings()

@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+
+from ..auth.deps import Principal, require_auth
 from ..db import get_db
 from ..schemas.chat import ChatRequest, ChatResponse, SafetyInfo
 from ..services.agent_registry import discover_agents
-from ..services.factories import get_provider, get_bayleaf, get_phi_filter
-from ..auth.deps import require_auth, Principal
+from ..services.factories import get_bayleaf, get_phi_filter, get_provider
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 _AGENT_CLASSES = discover_agents()
+
 
 for slug, AgentCls in _AGENT_CLASSES.items():
 

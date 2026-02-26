@@ -15,6 +15,7 @@ services:
     depends_on:
       - db
       - presidio-analyzer
+      - qdrant
     environment:
       APP_ENV: dev
       HOST: 0.0.0.0
@@ -26,6 +27,10 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DATABASE_URL: postgresql+psycopg://bayleaf:bayleaf@db:5432/bayleaf_agents
       PHI_FILTER_URL: http://presidio-analyzer:3000/analyze
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: documents
+      EMBEDDING_MODELS: ${EMBEDDING_MODELS:-intfloat/multilingual-e5-base,BAAI/bge-m3}
+      EMBEDDING_DEFAULT_MODEL: ${EMBEDDING_DEFAULT_MODEL:-intfloat/multilingual-e5-base}
     ports:
       - "8080:8080"
     volumes:
@@ -42,6 +47,14 @@ services:
     ports:
       - "8001:3000"
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+
 
 volumes:
   pgdata:
+  qdrant-data:

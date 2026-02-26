@@ -5,6 +5,8 @@ from .config import settings
 from .logging import setup_logging
 from .routers import health
 from .routers.agents import router as agents_router  # ⬅️ add this
+from .routers.documents import router as documents_router
+
 
 def create_app() -> FastAPI:
     log = setup_logging()
@@ -20,6 +22,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(agents_router)
+    app.include_router(documents_router)
 
     log.info("app_started", env=settings.APP_ENV, provider=settings.LLM_PROVIDER)
     return app
