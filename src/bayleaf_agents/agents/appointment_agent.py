@@ -147,4 +147,12 @@ class AppointmentAgent(BaseAgent):
             bayleaf=bayleaf,
             phi_filter=phi_filter,
             state_handler=AppointmentStateHandler(),
+            enabled_tool_names=[
+                "create_patient",
+                "list_available_slots",
+                "list_available_professionals",
+                "list_available_specializations",
+                "chat_token",
+                "book_appointment",
+            ],
         )

@@ -3,7 +3,7 @@ import io
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse
 
 import requests
@@ -469,6 +469,41 @@ class QdrantDocumentsService:
                         "model_used": payload.get("model_used"),
                     }
         return sorted(docs.values(), key=lambda d: d.get("indexed_at") or "", reverse=True)
+
+    def _extract_document_uuids(self, payload: Any) -> Set[str]:
+        collected: Set[str] = set()
+        uuid_pattern = re.compile(
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            flags=re.IGNORECASE,
+        )
+
+        def _walk(node: Any):
+            if isinstance(node, dict):
+                for key, value in node.items():
+                    key_text = str(key).lower()
+                    if isinstance(value, str) and "uuid" in key_text and uuid_pattern.match(value.strip()):
+                        collected.add(value.strip())
+                    _walk(value)
+            elif isinstance(node, list):
+                for item in node:
+                    _walk(item)
+
+        _walk(payload)
+        return collected
+
+    def document_uuids_for_doc_key(
+        self,
+        *,
+        doc_key: str,
+        principal: Optional[Principal],
+    ) -> List[str]:
+        if not doc_key.strip():
+            return []
+        docs = self.bayleaf.documents_by_doc_key(doc_key=doc_key.strip(), principal=principal)
+        uuids: Set[str] = set()
+        for item in docs:
+            uuids.update(self._extract_document_uuids(item))
+        return sorted(uuids)
 
     def get_document(self, document_uuid: str) -> Dict[str, Any]:
         _, points = self._find_latest_document_points(document_uuid=document_uuid)

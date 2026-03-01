@@ -35,6 +35,8 @@ class BaseAgent:
         use_phi_filter: bool = True,
         placeholder_instructions: Optional[str] = None,
         state_handler: Optional[BaseStateHandler] = None,
+        enabled_tool_names: Optional[List[str]] = None,
+        documents_doc_key: Optional[str] = None,
     ):
         self.log = structlog.get_logger("agent")
         self.name = name
@@ -45,6 +47,24 @@ class BaseAgent:
         self.phi_filter = (phi_filter or PHIFilterClient()) if use_phi_filter else None
         self.placeholder_instructions = placeholder_instructions or PLACEHOLDER_GUIDANCE
         self.state_handler = state_handler or BaseStateHandler(log=self.log)
+        self.enabled_tool_names = set(enabled_tool_names) if enabled_tool_names is not None else None
+        self.documents_doc_key = documents_doc_key
+
+    def _tool_enabled(self, name: str) -> bool:
+        if self.enabled_tool_names is None:
+            return True
+        return name in self.enabled_tool_names
+
+    def _available_tools(self) -> List[Dict[str, Any]]:
+        tools: List[Dict[str, Any]] = []
+        for schema in tool_schemas():
+            tool_name = str(schema.get("name") or "")
+            if tool_name and self._tool_enabled(tool_name):
+                tools.append(schema)
+
+        if self.documents_tools and self._tool_enabled("query_documents"):
+            tools += query_tool_schemas()
+        return tools
 
     def _load_state(self, db: Session, conv_id: str) -> Dict[str, Any]:
         msg = (
@@ -220,6 +240,8 @@ class BaseAgent:
         Some tools are token-scoped (no IDs); others expect explicit payload.
         """
         args = args or {}
+        if not self._tool_enabled(name):
+            return {"error": f"tool_not_allowed:{name}"}
         if name in ("patient_summary", "current_patient_summary"):
             # Token-scoped: server infers the patient from the bearer token.
             return self.bayleaf.current_patient_summary(principal=principal)
@@ -298,6 +320,8 @@ class BaseAgent:
                     document_uuids=document_uuids,
                     source_type=args.get("source_type"),
                     is_bayleaf=args.get("is_bayleaf"),
+                    doc_key=self.documents_doc_key,
+                    principal=principal,
                 )
             except Exception as e:
                 return {"error": "query_documents_failed", "details": str(e)}
@@ -391,9 +415,7 @@ class BaseAgent:
         self._persist_phi_entities(db, user_record, user_redaction.get("entities", []))
         placeholder_mapping = self._placeholder_map(db, conv.id)
 
-        tools = tool_schemas()
-        if self.documents_tools:
-            tools += query_tool_schemas()
+        tools = self._available_tools()
         out = self.provider.chat(messages, tools)
 
         used_tools: List[str] = []

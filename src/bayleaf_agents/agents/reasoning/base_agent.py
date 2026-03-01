@@ -66,6 +66,8 @@ class ReasoningBaseAgent(BaseAgent):
                 conversation_id=conv_id,
                 user_message=user_message,
                 lang=lang,
+                principal=principal,
+                doc_key=self.documents_doc_key,
             )
             route_trace["decider"] = decision
             if decision.get("needs_retrieval"):

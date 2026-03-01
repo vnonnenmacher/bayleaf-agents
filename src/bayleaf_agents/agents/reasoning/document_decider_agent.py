@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from ...auth.deps import Principal
 from ...llm.base import LLMProvider
 from ...models import Message
 from ...tools.documents import DocumentsToolset
@@ -49,8 +50,13 @@ class DocumentDeciderAgent:
         conversation_id: Optional[str],
         user_message: str,
         lang: str = "pt-BR",
+        principal: Optional[Principal] = None,
+        doc_key: Optional[str] = None,
     ) -> Dict[str, Any]:
-        available = self.documents_tools.documents_service.documents_available()
+        available = self.documents_tools.documents_available(
+            doc_key=doc_key,
+            principal=principal,
+        )
         docs_catalog = [
             {
                 "uuid": doc.get("uuid"),

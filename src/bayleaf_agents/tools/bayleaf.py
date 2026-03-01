@@ -412,6 +412,28 @@ class BayleafClient:
             use_auth=True,
         )
 
+    def documents_by_doc_key(
+        self,
+        *,
+        doc_key: str,
+        principal: Optional[Principal] = None,
+    ) -> List[Dict[str, Any]]:
+        data = self._get(
+            "/api/documents/",
+            params={"search_doc_key": doc_key},
+            principal=principal,
+            use_auth=True,
+        )
+        if isinstance(data, dict) and data.get("error"):
+            return []
+        if isinstance(data, list):
+            return [item for item in data if isinstance(item, dict)]
+        if isinstance(data, dict):
+            results = data.get("results")
+            if isinstance(results, list):
+                return [item for item in results if isinstance(item, dict)]
+        return []
+
 
 def tool_schemas() -> list[dict]:
     return [

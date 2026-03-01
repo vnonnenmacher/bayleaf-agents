@@ -36,4 +36,8 @@ class TreatmentAgent(BaseAgent):
             bayleaf=bayleaf,
             phi_filter=phi_filter,
             state_handler=TreatmentStateHandler(),
+            enabled_tool_names=[
+                "current_patient_summary",
+                "current_medications",
+            ],
         )
