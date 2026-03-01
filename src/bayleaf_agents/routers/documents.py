@@ -9,6 +9,7 @@ from ..services.qdrant_documents import DocumentServiceError
 class IndexedDocument(BaseModel):
     uuid: str
     name: str | None = None
+    description: str | None = None
     status: str
     is_bayleaf: bool
     chunks: int
@@ -35,6 +36,7 @@ class DocumentQueryRequest(BaseModel):
     top_k: int = 5
     model_used: str | None = None
     document_uuid: str | None = None
+    document_uuids: list[str] | None = None
     source_type: str | None = None
     is_bayleaf: bool | None = None
 
@@ -148,6 +150,7 @@ async def query_documents(
             top_k=req.top_k,
             model_used=req.model_used,
             document_uuid=req.document_uuid,
+            document_uuids=req.document_uuids,
             source_type=req.source_type,
             is_bayleaf=req.is_bayleaf,
         )

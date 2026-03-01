@@ -1,6 +1,7 @@
 from ..llm.base import LLMProvider
 from ..services.phi_filter import PHIFilterClient
 from ..tools.bayleaf import BayleafClient
+from ..tools.documents import DocumentsToolset
 from .reasoning import ReasoningBaseAgent
 
 
@@ -9,7 +10,9 @@ class LabcopilotAgent(ReasoningBaseAgent):
         self,
         provider: LLMProvider,
         bayleaf: BayleafClient,
+        documents_tools: DocumentsToolset | None = None,
         phi_filter: PHIFilterClient | None = None,
+        decider_provider: LLMProvider | None = None,
     ):
         super().__init__(
             name="Labcopilot Agent",
@@ -27,5 +30,8 @@ class LabcopilotAgent(ReasoningBaseAgent):
             },
             provider=provider,
             bayleaf=bayleaf,
+            documents_tools=documents_tools,
             phi_filter=phi_filter,
+            use_phi_filter=False,
         )
+        self.decider_provider = decider_provider or provider

@@ -1,6 +1,10 @@
 from typing import Any, Dict, Optional
 
+from sqlalchemy.orm import Session
+
 from ..base_agent import BaseAgent
+from ...auth.deps import Principal
+from .document_decider_agent import DocumentDeciderAgent
 
 
 class ReasoningBaseAgent(BaseAgent):
@@ -29,3 +33,50 @@ class ReasoningBaseAgent(BaseAgent):
             "reason": "no_routing_logic_implemented",
             "confidence": 0.0,
         }
+
+    def _build_decider(self) -> Optional[DocumentDeciderAgent]:
+        if not self.documents_tools:
+            return None
+        provider = getattr(self, "decider_provider", None) or self.provider
+        return DocumentDeciderAgent(provider=provider, documents_tools=self.documents_tools)
+
+    def chat(
+        self,
+        db: Session,
+        channel: str,
+        user_message: str,
+        external_conversation_id: Optional[str],
+        *,
+        principal: Optional[Principal] = None,
+        lang: str = "en-US",
+    ) -> Dict[str, Any]:
+        conv_id: Optional[str] = None
+        if external_conversation_id:
+            conv = self._get_or_create_conversation(
+                db, external_conversation_id, principal.user_id, channel
+            )
+            conv_id = conv.id
+        decider = self._build_decider()
+        route_trace: Dict[str, Any] = {"decider": None}
+        candidate_ids: list[str] = []
+        if decider:
+            decision = decider.decide_documents(
+                db=db,
+                conversation_id=conv_id,
+                user_message=user_message,
+                lang=lang,
+            )
+            route_trace["decider"] = decision
+            if decision.get("needs_retrieval"):
+                candidate_ids = list(decision.get("candidate_document_ids") or [])
+
+        return super().chat(
+            db=db,
+            channel=channel,
+            user_message=user_message,
+            external_conversation_id=external_conversation_id,
+            principal=principal,
+            lang=lang,
+            candidate_document_ids=candidate_ids,
+            document_route_trace=route_trace,
+        )

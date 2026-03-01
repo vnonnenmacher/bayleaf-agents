@@ -14,6 +14,7 @@ class DocumentsToolset:
         top_k: int = 5,
         model_used: Optional[str] = None,
         document_uuid: Optional[str] = None,
+        document_uuids: Optional[list[str]] = None,
         source_type: Optional[str] = None,
         is_bayleaf: Optional[bool] = None,
     ) -> Dict[str, Any]:
@@ -22,6 +23,7 @@ class DocumentsToolset:
             top_k=top_k,
             model_used=model_used,
             document_uuid=document_uuid,
+            document_uuids=document_uuids,
             source_type=source_type,
             is_bayleaf=is_bayleaf,
         )
@@ -39,6 +41,11 @@ def query_tool_schemas() -> list[dict]:
                     "top_k": {"type": "integer", "minimum": 1, "maximum": 50},
                     "model_used": {"type": "string"},
                     "document_uuid": {"type": "string"},
+                    "document_uuids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                    },
                     "source_type": {"type": "string", "enum": ["bayleaf", "uploaded"]},
                     "is_bayleaf": {"type": "boolean"},
                 },

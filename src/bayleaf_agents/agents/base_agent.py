@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from ..models import Conversation, Message, Role, PHIEntity
 from ..llm.base import LLMProvider
 from ..tools.bayleaf import BayleafClient, tool_schemas
+from ..tools.documents import DocumentsToolset, query_tool_schemas
 from ..auth.deps import Principal
 from ..services.phi_filter import PHIFilterClient, PHIEntityResult
 from .state_handlers import BaseStateHandler
@@ -29,7 +30,9 @@ class BaseAgent:
         objective: str | Dict[str, str],  # supports i18n dict or single string
         provider: LLMProvider,
         bayleaf: BayleafClient,
+        documents_tools: Optional[DocumentsToolset] = None,
         phi_filter: Optional[PHIFilterClient] = None,
+        use_phi_filter: bool = True,
         placeholder_instructions: Optional[str] = None,
         state_handler: Optional[BaseStateHandler] = None,
     ):
@@ -38,7 +41,8 @@ class BaseAgent:
         self.objective = objective
         self.provider = provider
         self.bayleaf = bayleaf
-        self.phi_filter = phi_filter or PHIFilterClient()
+        self.documents_tools = documents_tools
+        self.phi_filter = (phi_filter or PHIFilterClient()) if use_phi_filter else None
         self.placeholder_instructions = placeholder_instructions or PLACEHOLDER_GUIDANCE
         self.state_handler = state_handler or BaseStateHandler(log=self.log)
 
@@ -197,6 +201,7 @@ class BaseAgent:
         *,
         args: Optional[Dict[str, Any]] = None,
         principal: Optional[Principal] = None,
+        candidate_document_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any] | List[Dict[str, Any]]:
         """
         Map tool name to Bayleaf client call.
@@ -262,6 +267,28 @@ class BaseAgent:
                 )
             except KeyError as e:
                 return {"error": f"missing_arg:{e.args[0]}"}
+        elif name == "query_documents":
+            if not self.documents_tools:
+                return {"error": "documents_tool_unavailable"}
+            try:
+                query = str(args.get("query") or "")
+                if not query:
+                    return {"error": "missing_arg:query"}
+                document_uuid = args.get("document_uuid")
+                document_uuids = args.get("document_uuids")
+                if not document_uuid and not document_uuids and candidate_document_ids:
+                    document_uuids = candidate_document_ids
+                return self.documents_tools.query_documents(
+                    query=query,
+                    top_k=int(args.get("top_k", 5)),
+                    model_used=args.get("model_used"),
+                    document_uuid=document_uuid,
+                    document_uuids=document_uuids,
+                    source_type=args.get("source_type"),
+                    is_bayleaf=args.get("is_bayleaf"),
+                )
+            except Exception as e:
+                return {"error": "query_documents_failed", "details": str(e)}
         else:
             return {"error": f"unknown_tool:{name}"}
 
@@ -281,6 +308,8 @@ class BaseAgent:
         *,
         principal: Optional[Principal] = None,
         lang: str = "en-US",
+        candidate_document_ids: Optional[List[str]] = None,
+        document_route_trace: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         trace = f"{self.name}_{uuid.uuid4().hex[:12]}"
         t0 = time.time()
@@ -300,6 +329,11 @@ class BaseAgent:
             f"Current datetime (UTC): {now_iso}\n"
             f"{self.placeholder_instructions}"
         )
+        if candidate_document_ids:
+            system_prompt += (
+                "\nDocument retrieval context: if you decide to query documents, prioritize the candidate document ids "
+                f"provided by orchestration: {candidate_document_ids}."
+            )
         messages = [{"role": "system", "content": system_prompt}]
         state = self._load_state(db, conv.id)
         if state:
@@ -314,7 +348,8 @@ class BaseAgent:
                 role="user",
                 changed=user_message != redacted_user_text,
                 entities=len(user_redaction.get("entities", []) if isinstance(user_redaction.get("entities", []), list) else []),
-                placeholders=[e.get("placeholder") for e in user_redaction.get("entities", []) if isinstance(e, dict)] if isinstance(user_redaction.get("entities", []), list) else [],
+                placeholders=[e.get("placeholder") for e in user_redaction.get("entities", []) if isinstance(e, dict)] if isinstance(
+                    user_redaction.get("entities", []), list) else [],
             )
         except Exception:
             pass
@@ -330,7 +365,13 @@ class BaseAgent:
             messages.append({"role": "assistant", "content": f"[redaction] user provided: {provided} (value hidden)"})
 
         # persist user message (raw + redacted + PHI entities)
-        user_record = Message(conversation_id=conv.id, role=Role.user, content=user_message, redacted_content=redacted_user_text)
+        user_record = Message(
+            conversation_id=conv.id,
+            role=Role.user,
+            content=user_message,
+            redacted_content=redacted_user_text,
+            retrieval_trace=document_route_trace,
+        )
         db.add(user_record)
         db.commit()
         db.refresh(user_record)
@@ -338,6 +379,8 @@ class BaseAgent:
         placeholder_mapping = self._placeholder_map(db, conv.id)
 
         tools = tool_schemas()
+        if self.documents_tools:
+            tools += query_tool_schemas()
         out = self.provider.chat(messages, tools)
 
         used_tools: List[str] = []
@@ -386,6 +429,7 @@ class BaseAgent:
                     name,
                     args=prepared_args,
                     principal=principal,
+                    candidate_document_ids=candidate_document_ids,
                 )
 
                 state_changed = self.state_handler.apply(
@@ -414,6 +458,7 @@ class BaseAgent:
                     tool_name=name,
                     tool_args=tc.get("args"),
                     tool_result=result,
+                    retrieval_trace=result.get("trace") if isinstance(result, dict) else None,
                 )
                 db.add(tool_msg)
                 db.commit()

@@ -12,6 +12,8 @@ class Settings(BaseModel):
     LLM_PROVIDER: str = Field(default=os.getenv("LLM_PROVIDER", "mock"))  # mock | openai
     OPENAI_API_KEY: str = Field(default=os.getenv("OPENAI_API_KEY", ""))
     OPENAI_MODEL: str = Field(default=os.getenv("OPENAI_MODEL", "gpt-4o"))
+    DECIDER_LLM_PROVIDER: str = Field(default=os.getenv("DECIDER_LLM_PROVIDER", "openai"))
+    DECIDER_OPENAI_MODEL: str = Field(default=os.getenv("DECIDER_OPENAI_MODEL", "gpt-4o"))
 
     # PHI filter (spaCy + Presidio sidecar)
     PHI_FILTER_URL: str = Field(default=os.getenv("PHI_FILTER_URL", "http://localhost:8001/analyze"))

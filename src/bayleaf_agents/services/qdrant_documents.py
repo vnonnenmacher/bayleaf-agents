@@ -251,6 +251,7 @@ class QdrantDocumentsService:
                     "payload": {
                         "document_uuid": document_uuid,
                         "name": filename,
+                        "description": None,
                         "mime_type": mime_type,
                         "source_type": source_type,
                         "is_bayleaf": source_type == "bayleaf",
@@ -276,6 +277,7 @@ class QdrantDocumentsService:
         return {
             "uuid": document_uuid,
             "name": filename,
+            "description": None,
             "status": status,
             "is_bayleaf": source_type == "bayleaf",
             "chunks": chunk_count,
@@ -458,6 +460,7 @@ class QdrantDocumentsService:
                     docs[doc_uuid] = {
                         "uuid": doc_uuid,
                         "name": payload.get("name"),
+                        "description": payload.get("description"),
                         "status": payload.get("status"),
                         "is_bayleaf": bool(payload.get("is_bayleaf")),
                         "source_type": payload.get("source_type"),
@@ -473,6 +476,7 @@ class QdrantDocumentsService:
         return {
             "uuid": document_uuid,
             "name": payload.get("name"),
+            "description": payload.get("description"),
             "status": payload.get("status"),
             "is_bayleaf": bool(payload.get("is_bayleaf")),
             "source_type": payload.get("source_type"),
@@ -545,19 +549,28 @@ class QdrantDocumentsService:
         self,
         *,
         document_uuid: Optional[str],
+        document_uuids: Optional[List[str]],
         source_type: Optional[str],
         is_bayleaf: Optional[bool],
     ) -> Optional[Dict[str, Any]]:
         must: List[Dict[str, Any]] = []
+        should: List[Dict[str, Any]] = []
         if document_uuid:
             must.append({"key": "document_uuid", "match": {"value": document_uuid}})
+        elif document_uuids:
+            should = [{"key": "document_uuid", "match": {"value": doc_id}} for doc_id in document_uuids]
         if source_type:
             must.append({"key": "source_type", "match": {"value": source_type}})
         if is_bayleaf is not None:
             must.append({"key": "is_bayleaf", "match": {"value": is_bayleaf}})
-        if not must:
+        if not must and not should:
             return None
-        return {"must": must}
+        out: Dict[str, Any] = {}
+        if must:
+            out["must"] = must
+        if should:
+            out["should"] = should
+        return out
 
     def query_documents(
         self,
@@ -566,6 +579,7 @@ class QdrantDocumentsService:
         top_k: int = 5,
         model_used: Optional[str] = None,
         document_uuid: Optional[str] = None,
+        document_uuids: Optional[List[str]] = None,
         source_type: Optional[str] = None,
         is_bayleaf: Optional[bool] = None,
     ) -> Dict[str, Any]:
@@ -578,6 +592,7 @@ class QdrantDocumentsService:
         collection = self._ensure_collection(model)
         query_filter = self._build_query_filter(
             document_uuid=document_uuid,
+            document_uuids=document_uuids,
             source_type=source_type,
             is_bayleaf=is_bayleaf,
         )
@@ -599,6 +614,7 @@ class QdrantDocumentsService:
                     "score": item.get("score"),
                     "document_uuid": payload.get("document_uuid"),
                     "name": payload.get("name"),
+                    "description": payload.get("description"),
                     "chunk_index": payload.get("chunk_index"),
                     "chunk_count": payload.get("chunk_count"),
                     "text_chunk": payload.get("text_chunk"),

@@ -16,6 +16,7 @@ _bayleaf: BayleafClient | None = None
 _phi_filter: PHIFilterClient | None = None
 _qdrant_documents: QdrantDocumentsService | None = None
 _documents_tools: DocumentsToolset | None = None
+_decider_provider: LLMProvider | None = None
 
 
 def get_provider() -> LLMProvider:
@@ -66,3 +67,22 @@ def get_documents_tools() -> DocumentsToolset:
     if _documents_tools is None:
         _documents_tools = DocumentsToolset(get_qdrant_documents())
     return _documents_tools
+
+
+def get_decider_provider() -> LLMProvider:
+    global _decider_provider
+    if _decider_provider is not None:
+        return _decider_provider
+
+    decider_provider = settings.DECIDER_LLM_PROVIDER.strip().lower()
+    if not decider_provider:
+        _decider_provider = get_provider()
+        return _decider_provider
+
+    if decider_provider == "openai" and OpenAIProvider:
+        model = settings.DECIDER_OPENAI_MODEL.strip() or settings.OPENAI_MODEL
+        _decider_provider = OpenAIProvider(api_key=settings.OPENAI_API_KEY, model=model)
+        return _decider_provider
+
+    _decider_provider = MockProvider()
+    return _decider_provider
