@@ -84,23 +84,35 @@ class BaseAgent:
             "last_professionals_count": len(state.get("last_professionals", [])) if isinstance(state.get("last_professionals"), list) else 0,
             "last_specializations_count": len(state.get("last_specializations", [])) if isinstance(state.get("last_specializations"), list) else 0,
             "last_booking": state.get("last_booking", {}).get("appointment_id") if isinstance(state.get("last_booking"), dict) else None,
-            "last_booking_error": state.get("last_booking_error", {}).get("status_code") if isinstance(state.get("last_booking_error"), dict) else None,
+            "last_booking_error": state.get("last_booking_error", {}).get("status_code") if isinstance(state.get("last_booking_error"), dict) else None,  # noqa
         }
         return json.dumps(summary, ensure_ascii=False)
 
     def _get_or_create_conversation(
-        self, db: Session, external_id: Optional[str], user_id: str, channel: str
+        self,
+        db: Session,
+        external_id: Optional[str],
+        user_id: str,
+        channel: str,
+        agent_slug: Optional[str] = None,
     ) -> Conversation:
         conv = None
         if external_id:
-            conv = (
+            q = (
                 db.query(Conversation)
                 .filter_by(external_id=external_id, user_id=user_id, channel=channel)
-                .first()
             )
+            if agent_slug is None:
+                q = q.filter(Conversation.agent_slug.is_(None))
+            else:
+                q = q.filter_by(agent_slug=agent_slug)
+            conv = q.first()
         if not conv:
             conv = Conversation(
-                external_id=external_id, user_id=user_id, channel=channel
+                external_id=external_id,
+                user_id=user_id,
+                channel=channel,
+                agent_slug=agent_slug,
             )
             db.add(conv)
             db.commit()
@@ -310,13 +322,14 @@ class BaseAgent:
         lang: str = "en-US",
         candidate_document_ids: Optional[List[str]] = None,
         document_route_trace: Optional[Dict[str, Any]] = None,
+        agent_slug: Optional[str] = None,
     ) -> Dict[str, Any]:
         trace = f"{self.name}_{uuid.uuid4().hex[:12]}"
         t0 = time.time()
         lang_norm = (lang or "en").split("-")[0]
 
         conv = self._get_or_create_conversation(
-            db, external_conversation_id, principal.user_id, channel
+            db, external_conversation_id, principal.user_id, channel, agent_slug=agent_slug
         )
         now_iso = datetime.now(timezone.utc).isoformat()
 
@@ -340,7 +353,7 @@ class BaseAgent:
             messages.append({"role": "assistant", "content": f"[state] {self._state_summary(state)}"})
         messages.extend(self._load_history(db, conv.id, include_tools=True, lang=lang_norm))
 
-        user_redaction = self.phi_filter.redact(user_message, language=lang_norm) if self.phi_filter else {"redacted_text": user_message, "entities": []}
+        user_redaction = self.phi_filter.redact(user_message, language=lang_norm) if self.phi_filter else {"redacted_text": user_message, "entities": []}  # noqa
         redacted_user_text = user_redaction["redacted_text"]
         try:
             self.log.info(
@@ -438,7 +451,7 @@ class BaseAgent:
 
                 # persist tool result
                 tool_content = json.dumps(result, ensure_ascii=False)
-                tool_redaction = self.phi_filter.redact(tool_content, language=lang_norm) if self.phi_filter else {"redacted_text": tool_content, "entities": []}
+                tool_redaction = self.phi_filter.redact(tool_content, language=lang_norm) if self.phi_filter else {"redacted_text": tool_content, "entities": []}  # noqa
                 try:
                     self.log.info(
                         "redaction_applied",
@@ -446,7 +459,7 @@ class BaseAgent:
                         tool=name,
                         changed=tool_content != tool_redaction.get("redacted_text"),
                         entities=len(tool_redaction.get("entities", []) if isinstance(tool_redaction.get("entities", []), list) else []),
-                        placeholders=[e.get("placeholder") for e in tool_redaction.get("entities", []) if isinstance(e, dict)] if isinstance(tool_redaction.get("entities", []), list) else [],
+                        placeholders=[e.get("placeholder") for e in tool_redaction.get("entities", []) if isinstance(e, dict)] if isinstance(tool_redaction.get("entities", []), list) else [],  # noqa
                     )
                 except Exception:
                     pass
