@@ -117,16 +117,20 @@ class BaseAgent:
         agent_slug: Optional[str] = None,
     ) -> Conversation:
         conv = None
+        q = (
+            db.query(Conversation)
+            .filter_by(user_id=user_id, channel=channel)
+        )
+        if agent_slug is None:
+            q = q.filter(Conversation.agent_slug.is_(None))
+        else:
+            q = q.filter_by(agent_slug=agent_slug)
+
         if external_id:
-            q = (
-                db.query(Conversation)
-                .filter_by(external_id=external_id, user_id=user_id, channel=channel)
-            )
-            if agent_slug is None:
-                q = q.filter(Conversation.agent_slug.is_(None))
-            else:
-                q = q.filter_by(agent_slug=agent_slug)
-            conv = q.first()
+            # Prefer explicit external ids, then fall back to DB conversation id.
+            conv = q.filter(Conversation.external_id == external_id).first()
+            if not conv:
+                conv = q.filter(Conversation.id == external_id).first()
         if not conv:
             conv = Conversation(
                 external_id=external_id,

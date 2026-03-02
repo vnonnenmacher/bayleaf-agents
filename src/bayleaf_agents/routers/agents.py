@@ -49,10 +49,10 @@ def _resolve_user_conversation(
         q = q.filter(Conversation.channel == channel)
     if agent_slug:
         q = q.filter(Conversation.agent_slug == agent_slug)
-    conv = q.filter(Conversation.external_id == conversation_identifier).first()
+    conv = q.filter(Conversation.id == conversation_identifier).first()
     if conv:
         return conv
-    return q.filter(Conversation.id == conversation_identifier).first()
+    return q.filter(Conversation.external_id == conversation_identifier).first()
 
 
 for slug, AgentCls in _AGENT_CLASSES.items():
