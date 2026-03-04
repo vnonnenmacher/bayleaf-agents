@@ -8,6 +8,8 @@ class ChatRequest(BaseModel):
     channel: Literal['bayleaf_app', 'whatsapp', 'partner']
     message: str = Field(min_length=1)
     conversation_id: Optional[str] = None
+    group_id: Optional[str] = None
+    document_uuids: Optional[list[str]] = None
     lang: Optional[str] = None
 
 
@@ -35,6 +37,7 @@ class ConversationSummary(BaseModel):
     external_id: Optional[str] = None
     channel: str
     agent_slug: Optional[str] = None
+    group_id: Optional[str] = None
     created_at: datetime
     last_message_at: datetime
     message_count: int
@@ -56,4 +59,33 @@ class ConversationMessage(BaseModel):
 class ConversationMessagesResponse(BaseModel):
     conversation_id: str
     items: list[ConversationMessage]
+    pagination: PaginationInfo
+
+
+class ConversationGroupCreateRequest(BaseModel):
+    type: Literal["project", "event"]
+    metadata: dict = Field(default_factory=dict)
+    document_uuids: list[str] = Field(default_factory=list)
+    is_active: bool = True
+
+
+class ConversationGroupUpdateRequest(BaseModel):
+    is_active: Optional[bool] = None
+    metadata: Optional[dict] = None
+    document_uuids: Optional[list[str]] = None
+
+
+class ConversationGroupSummary(BaseModel):
+    id: str
+    owner_id: str
+    type: Literal["project", "event"]
+    is_active: bool
+    metadata: dict
+    document_uuids: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class ConversationGroupsResponse(BaseModel):
+    items: list[ConversationGroupSummary]
     pagination: PaginationInfo

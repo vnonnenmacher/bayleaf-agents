@@ -3,8 +3,12 @@ from sqlalchemy.orm import sessionmaker
 
 from bayleaf_agents.agents.base_agent import BaseAgent
 from bayleaf_agents.llm.mock import MockProvider
-from bayleaf_agents.models import Base, Conversation
-from bayleaf_agents.routers.agents import _resolve_user_conversation
+import pytest
+
+from fastapi import HTTPException
+
+from bayleaf_agents.models import Base, Conversation, ConversationGroup, ConversationGroupType
+from bayleaf_agents.routers.agents import _resolve_owned_group, _resolve_user_conversation
 from bayleaf_agents.tools.bayleaf import BayleafClient
 
 
@@ -82,3 +86,48 @@ def test_resolve_user_conversation_prefers_internal_id_over_external_id_collisio
     assert resolved is not None
     assert resolved.id == conv1.id
 
+
+def test_get_or_create_conversation_rejects_group_mismatch():
+    db = _session()
+    agent = _agent()
+
+    conv = agent._get_or_create_conversation(
+        db,
+        external_id="conv-external",
+        user_id="user-1",
+        channel="bayleaf_app",
+        agent_slug="labcopilot",
+        group_id="group-1",
+    )
+
+    with pytest.raises(ValueError, match="conversation_group_mismatch"):
+        agent._get_or_create_conversation(
+            db,
+            external_id=conv.id,
+            user_id="user-1",
+            channel="bayleaf_app",
+            agent_slug="labcopilot",
+            group_id="group-2",
+        )
+
+
+def test_resolve_owned_group_enforces_owner():
+    db = _session()
+    group = ConversationGroup(
+        owner_id="user-1",
+        type=ConversationGroupType.project,
+        metadata_json={"description": "proj"},
+        document_uuids=["doc-1"],
+        is_active=True,
+    )
+    db.add(group)
+    db.commit()
+    db.refresh(group)
+
+    resolved = _resolve_owned_group(db, owner_id="user-1", group_id=group.id)
+    assert resolved.id == group.id
+
+    with pytest.raises(HTTPException) as exc_info:
+        _resolve_owned_group(db, owner_id="user-2", group_id=group.id)
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "group_not_found"

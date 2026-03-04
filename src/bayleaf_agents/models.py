@@ -14,6 +14,34 @@ class Role(str, enum.Enum):
     tool = "tool"
 
 
+class ConversationGroupType(str, enum.Enum):
+    project = "project"
+    event = "event"
+
+
+class ConversationGroup(Base):
+    __tablename__ = "conversation_groups"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    type: Mapped[ConversationGroupType] = mapped_column(Enum(ConversationGroupType), index=True)
+    is_active: Mapped[bool] = mapped_column(default=True, index=True)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    document_uuids: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    conversations: Mapped[list["Conversation"]] = relationship(
+        back_populates="group",
+    )
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
 
@@ -29,8 +57,10 @@ class Conversation(Base):
 
     channel: Mapped[str] = mapped_column(String(40), index=True)
     agent_slug: Mapped[Optional[str]] = mapped_column(String(100), index=True, nullable=True)
+    group_id: Mapped[Optional[str]] = mapped_column(ForeignKey("conversation_groups.id"), index=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+    group: Mapped[Optional[ConversationGroup]] = relationship(back_populates="conversations")
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation", cascade="all,delete-orphan"
     )

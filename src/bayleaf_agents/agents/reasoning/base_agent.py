@@ -50,11 +50,19 @@ class ReasoningBaseAgent(BaseAgent):
         principal: Optional[Principal] = None,
         lang: str = "en-US",
         agent_slug: Optional[str] = None,
+        group_id: Optional[str] = None,
+        group_context: Optional[Dict[str, Any]] = None,
+        forced_document_ids: Optional[list[str]] = None,
     ) -> Dict[str, Any]:
         conv_id: Optional[str] = None
         if external_conversation_id:
             conv = self._get_or_create_conversation(
-                db, external_conversation_id, principal.user_id, channel, agent_slug=agent_slug
+                db,
+                external_conversation_id,
+                principal.user_id,
+                channel,
+                agent_slug=agent_slug,
+                group_id=group_id,
             )
             conv_id = conv.id
         decider = self._build_decider()
@@ -83,4 +91,7 @@ class ReasoningBaseAgent(BaseAgent):
             candidate_document_ids=candidate_ids,
             document_route_trace=route_trace,
             agent_slug=agent_slug,
+            group_id=group_id,
+            group_context=group_context,
+            forced_document_ids=forced_document_ids,
         )

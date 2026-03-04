@@ -115,6 +115,7 @@ class BaseAgent:
         user_id: str,
         channel: str,
         agent_slug: Optional[str] = None,
+        group_id: Optional[str] = None,
     ) -> Conversation:
         conv = None
         q = (
@@ -131,12 +132,15 @@ class BaseAgent:
             conv = q.filter(Conversation.external_id == external_id).first()
             if not conv:
                 conv = q.filter(Conversation.id == external_id).first()
+        if conv and group_id is not None and conv.group_id != group_id:
+            raise ValueError("conversation_group_mismatch")
         if not conv:
             conv = Conversation(
                 external_id=external_id,
                 user_id=user_id,
                 channel=channel,
                 agent_slug=agent_slug,
+                group_id=group_id,
             )
             db.add(conv)
             db.commit()
@@ -238,6 +242,7 @@ class BaseAgent:
         args: Optional[Dict[str, Any]] = None,
         principal: Optional[Principal] = None,
         candidate_document_ids: Optional[List[str]] = None,
+        forced_document_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any] | List[Dict[str, Any]]:
         """
         Map tool name to Bayleaf client call.
@@ -314,7 +319,23 @@ class BaseAgent:
                     return {"error": "missing_arg:query"}
                 document_uuid = args.get("document_uuid")
                 document_uuids = args.get("document_uuids")
-                if not document_uuid and not document_uuids and candidate_document_ids:
+                forced_ids = self._normalize_document_ids(forced_document_ids)
+                if forced_ids:
+                    if document_uuid and document_uuid in forced_ids:
+                        document_uuids = [document_uuid]
+                        document_uuid = None
+                    elif document_uuid and document_uuid not in forced_ids:
+                        document_uuids = forced_ids
+                        document_uuid = None
+                    elif document_uuids:
+                        allowed = set(forced_ids)
+                        document_uuids = [doc_id for doc_id in document_uuids if doc_id in allowed]
+                        if not document_uuids:
+                            document_uuids = forced_ids
+                    else:
+                        document_uuids = forced_ids
+                    document_uuid = None
+                elif not document_uuid and not document_uuids and candidate_document_ids:
                     document_uuids = candidate_document_ids
                 return self.documents_tools.query_documents(
                     query=query,
@@ -331,6 +352,19 @@ class BaseAgent:
                 return {"error": "query_documents_failed", "details": str(e)}
         else:
             return {"error": f"unknown_tool:{name}"}
+
+    def _normalize_document_ids(self, document_ids: Optional[List[str]]) -> List[str]:
+        if not document_ids:
+            return []
+        seen: set[str] = set()
+        normalized: List[str] = []
+        for doc_id in document_ids:
+            value = str(doc_id).strip()
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
+        return normalized
 
     def _get_objective(self, lang: str) -> str:
         """Pick objective text in the requested language, fallback to en-US."""
@@ -351,15 +385,24 @@ class BaseAgent:
         candidate_document_ids: Optional[List[str]] = None,
         document_route_trace: Optional[Dict[str, Any]] = None,
         agent_slug: Optional[str] = None,
+        group_id: Optional[str] = None,
+        group_context: Optional[Dict[str, Any]] = None,
+        forced_document_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         trace = f"{self.name}_{uuid.uuid4().hex[:12]}"
         t0 = time.time()
         lang_norm = (lang or "en").split("-")[0]
 
         conv = self._get_or_create_conversation(
-            db, external_conversation_id, principal.user_id, channel, agent_slug=agent_slug
+            db,
+            external_conversation_id,
+            principal.user_id,
+            channel,
+            agent_slug=agent_slug,
+            group_id=group_id,
         )
         now_iso = datetime.now(timezone.utc).isoformat()
+        normalized_forced_ids = self._normalize_document_ids(forced_document_ids)
 
         system_prompt = (
             f"You are {self.name}. {self._get_objective(lang)}\n"
@@ -374,6 +417,17 @@ class BaseAgent:
             system_prompt += (
                 "\nDocument retrieval context: if you decide to query documents, prioritize the candidate document ids "
                 f"provided by orchestration: {candidate_document_ids}."
+            )
+        if group_context:
+            system_prompt += (
+                "\nConversation group context:\n"
+                f"{json.dumps(group_context, ensure_ascii=False)}\n"
+                "Treat this conversation as scoped to that project/event context."
+            )
+        if normalized_forced_ids:
+            system_prompt += (
+                "\nDocument retrieval requirement: when using query_documents, always use only these document_uuids: "
+                f"{normalized_forced_ids}."
             )
         messages = [{"role": "system", "content": system_prompt}]
         state = self._load_state(db, conv.id)
@@ -469,6 +523,7 @@ class BaseAgent:
                     args=prepared_args,
                     principal=principal,
                     candidate_document_ids=candidate_document_ids,
+                    forced_document_ids=normalized_forced_ids,
                 )
 
                 state_changed = self.state_handler.apply(
