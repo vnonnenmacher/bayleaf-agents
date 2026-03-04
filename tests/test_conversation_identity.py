@@ -131,3 +131,20 @@ def test_resolve_owned_group_enforces_owner():
         _resolve_owned_group(db, owner_id="user-2", group_id=group.id)
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "group_not_found"
+
+
+def test_get_or_create_conversation_sets_name_from_initial_message():
+    db = _session()
+    agent = _agent()
+
+    first_message = "Need appointment for severe back pain"
+    conv = agent._get_or_create_conversation(
+        db,
+        external_id=None,
+        user_id="user-1",
+        channel="bayleaf_app",
+        agent_slug="labcopilot",
+        initial_name=agent._conversation_title_from_first_message(first_message),
+    )
+
+    assert conv.name == "Need appointment for severe back pain"

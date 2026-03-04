@@ -1,5 +1,5 @@
 # src/bayleaf_agents/agents/base_agent.py
-import uuid, time, structlog, json
+import uuid, time, structlog, json, re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
@@ -116,6 +116,7 @@ class BaseAgent:
         channel: str,
         agent_slug: Optional[str] = None,
         group_id: Optional[str] = None,
+        initial_name: Optional[str] = None,
     ) -> Conversation:
         conv = None
         q = (
@@ -141,11 +142,18 @@ class BaseAgent:
                 channel=channel,
                 agent_slug=agent_slug,
                 group_id=group_id,
+                name=initial_name or "New conversation",
             )
             db.add(conv)
             db.commit()
             db.refresh(conv)
         return conv
+
+    def _conversation_title_from_first_message(self, user_message: str, *, max_words: int = 6) -> str:
+        words = re.findall(r"[^\W_]+(?:['-][^\W_]+)*", user_message or "", flags=re.UNICODE)
+        if not words:
+            return "New conversation"
+        return " ".join(words[:max_words])[:120]
 
     def _load_history(self, db: Session, conv_id: str, *, include_tools: bool = False, lang: str = "en") -> List[Dict[str, Any]]:
         q = (
@@ -400,6 +408,7 @@ class BaseAgent:
             channel,
             agent_slug=agent_slug,
             group_id=group_id,
+            initial_name=self._conversation_title_from_first_message(user_message),
         )
         now_iso = datetime.now(timezone.utc).isoformat()
         normalized_forced_ids = self._normalize_document_ids(forced_document_ids)
@@ -592,4 +601,5 @@ class BaseAgent:
             "used_tools": used_tools,
             "trace_id": trace,
             "conversation_id": conv.external_id or conv.id,
+            "conversation_name": conv.name,
         }

@@ -58,6 +58,7 @@ class Conversation(Base):
     channel: Mapped[str] = mapped_column(String(40), index=True)
     agent_slug: Mapped[Optional[str]] = mapped_column(String(100), index=True, nullable=True)
     group_id: Mapped[Optional[str]] = mapped_column(ForeignKey("conversation_groups.id"), index=True, nullable=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False, default="New conversation")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     group: Mapped[Optional[ConversationGroup]] = relationship(back_populates="conversations")

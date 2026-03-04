@@ -163,6 +163,7 @@ for slug, AgentCls in _AGENT_CLASSES.items():
             safety=safety,
             trace_id=result["trace_id"],
             conversation_id=result["conversation_id"],
+            conversation_name=result["conversation_name"],
         )
 
     router.add_api_route(
@@ -313,6 +314,7 @@ async def list_conversations(
     items = [
         ConversationSummary(
             conversation_id=conv.external_id or conv.id,
+            name=conv.name,
             external_id=conv.external_id,
             channel=conv.channel,
             agent_slug=conv.agent_slug,

@@ -23,6 +23,7 @@ class ChatResponse(BaseModel):
     safety: SafetyInfo
     trace_id: str
     conversation_id: str
+    conversation_name: str
 
 
 class PaginationInfo(BaseModel):
@@ -34,6 +35,7 @@ class PaginationInfo(BaseModel):
 
 class ConversationSummary(BaseModel):
     conversation_id: str
+    name: str
     external_id: Optional[str] = None
     channel: str
     agent_slug: Optional[str] = None
