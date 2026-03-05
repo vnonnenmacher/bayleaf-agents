@@ -13,6 +13,12 @@ class BayleafClient:
         self.tokens = TokenProvider()
         self.log = structlog.get_logger("bayleaf_client")
 
+    def _url(self, path: str) -> str:
+        # Support BAYLEAF_BASE_URL with or without a trailing "/api".
+        if self.base.endswith("/api") and path.startswith("/api/"):
+            return f"{self.base}{path[4:]}"
+        return f"{self.base}{path}"
+
     def _auth_headers(
         self,
         principal: Optional[Principal] = None,
@@ -46,7 +52,7 @@ class BayleafClient:
         bearer_token: Optional[str] = None,
     ):
         r = requests.get(
-            f"{self.base}{path}",
+            self._url(path),
             headers=self._auth_headers(principal, use_auth, bearer_token),
             params=params,
             timeout=self.timeout,
@@ -71,7 +77,7 @@ class BayleafClient:
         bearer_token: Optional[str] = None,
     ):
         r = requests.post(
-            f"{self.base}{path}",
+            self._url(path),
             headers=self._auth_headers(principal, use_auth, bearer_token),
             json=json_data or {},
             timeout=self.timeout,

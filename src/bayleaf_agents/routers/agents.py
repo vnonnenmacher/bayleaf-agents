@@ -160,6 +160,7 @@ for slug, AgentCls in _AGENT_CLASSES.items():
         return ChatResponse(
             reply=result["reply"],
             used_tools=result["used_tools"],
+            research_documents=result.get("research_documents", []),
             safety=safety,
             trace_id=result["trace_id"],
             conversation_id=result["conversation_id"],

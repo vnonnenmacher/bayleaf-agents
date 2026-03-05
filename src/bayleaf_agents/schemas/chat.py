@@ -17,9 +17,15 @@ class SafetyInfo(BaseModel):
     triage: Literal['non-urgent', 'urgent', 'emergency'] = 'non-urgent'
 
 
+class ResearchDocument(BaseModel):
+    name: str
+    uuid: str
+
+
 class ChatResponse(BaseModel):
     reply: str
     used_tools: list[str]
+    research_documents: list[ResearchDocument] = Field(default_factory=list)
     safety: SafetyInfo
     trace_id: str
     conversation_id: str

@@ -374,6 +374,26 @@ class BaseAgent:
             normalized.append(value)
         return normalized
 
+    def _collect_research_documents(
+        self,
+        result: Dict[str, Any],
+        *,
+        collected: List[Dict[str, str]],
+        seen: set[str],
+    ) -> None:
+        chunks = result.get("chunks")
+        if not isinstance(chunks, list):
+            return
+        for chunk in chunks:
+            if not isinstance(chunk, dict):
+                continue
+            doc_uuid = str(chunk.get("document_uuid") or "").strip()
+            name = str(chunk.get("name") or "").strip()
+            if not doc_uuid or not name or doc_uuid in seen:
+                continue
+            seen.add(doc_uuid)
+            collected.append({"name": name, "uuid": doc_uuid})
+
     def _get_objective(self, lang: str) -> str:
         """Pick objective text in the requested language, fallback to en-US."""
         if isinstance(self.objective, dict):
@@ -486,6 +506,8 @@ class BaseAgent:
         out = self.provider.chat(messages, tools)
 
         used_tools: List[str] = []
+        research_documents: List[Dict[str, str]] = []
+        research_document_uuids: set[str] = set()
         reply = out.get("reply", "Ok.")
         state_changed = False
         placeholder_mapping = self._placeholder_map(db, conv.id)
@@ -534,6 +556,12 @@ class BaseAgent:
                     candidate_document_ids=candidate_document_ids,
                     forced_document_ids=normalized_forced_ids,
                 )
+                if name == "query_documents" and isinstance(result, dict):
+                    self._collect_research_documents(
+                        result,
+                        collected=research_documents,
+                        seen=research_document_uuids,
+                    )
 
                 state_changed = self.state_handler.apply(
                     tool_name=name, args=prepared_args, result=result, state=state
@@ -599,6 +627,7 @@ class BaseAgent:
         return {
             "reply": restored_reply,
             "used_tools": used_tools,
+            "research_documents": research_documents,
             "trace_id": trace,
             "conversation_id": conv.external_id or conv.id,
             "conversation_name": conv.name,
