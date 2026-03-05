@@ -327,6 +327,6 @@ class LabcopilotAgent(ReasoningBaseAgent):
             phi_filter=phi_filter,
             use_phi_filter=False,
             enabled_tool_names=["query_documents"],
-            documents_doc_key="lab.doc_interna",
+            documents_doc_key="lab",
         )
         self.decider_provider = decider_provider or provider

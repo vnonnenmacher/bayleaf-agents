@@ -2,6 +2,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
+import structlog
 from sqlalchemy.orm import Session
 
 from ...auth.deps import Principal
@@ -14,6 +15,7 @@ class DocumentDeciderAgent:
     def __init__(self, provider: LLMProvider, documents_tools: DocumentsToolset):
         self.provider = provider
         self.documents_tools = documents_tools
+        self.log = structlog.get_logger("agent")
 
     def _history_text(self, db: Session, conversation_id: str, limit: int = 12) -> List[str]:
         msgs = (
@@ -94,6 +96,14 @@ class DocumentDeciderAgent:
         )
         parsed = self._parse_json(out.get("reply") or "")
         if not isinstance(parsed, dict):
+            self.log.info(
+                "document_decider_done",
+                needs_retrieval=False,
+                candidate_document_ids=[],
+                reason="decider_parse_failed",
+                confidence=0.0,
+                available_documents_count=len(docs_catalog),
+            )
             return {
                 "needs_retrieval": False,
                 "candidate_document_ids": [],
@@ -108,11 +118,19 @@ class DocumentDeciderAgent:
         valid_ids = {d.get("uuid") for d in docs_catalog if d.get("uuid")}
         ids = [str(x) for x in ids if str(x) in valid_ids]
 
-        needs_retrieval = bool(parsed.get("needs_retrieval")) and bool(ids)
-        return {
+        # Keep retrieval intent independent from candidate IDs.
+        # Candidate IDs can be empty due to catalog/scoping issues.
+        needs_retrieval = bool(parsed.get("needs_retrieval"))
+        try:
+            confidence = float(parsed.get("confidence") or 0.0)
+        except Exception:
+            confidence = 0.0
+        decision = {
             "needs_retrieval": needs_retrieval,
             "candidate_document_ids": ids,
             "reason": str(parsed.get("reason") or ""),
-            "confidence": float(parsed.get("confidence") or 0.0),
+            "confidence": confidence,
             "available_documents_count": len(docs_catalog),
         }
+        self.log.info("document_decider_done", **decision)
+        return decision

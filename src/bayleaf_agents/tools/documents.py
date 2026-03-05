@@ -1,5 +1,7 @@
 from typing import Any, Dict, Optional
 
+import structlog
+
 from ..auth.deps import Principal
 from ..services.qdrant_documents import QdrantDocumentsService
 
@@ -7,6 +9,7 @@ from ..services.qdrant_documents import QdrantDocumentsService
 class DocumentsToolset:
     def __init__(self, documents_service: QdrantDocumentsService):
         self.documents_service = documents_service
+        self.log = structlog.get_logger("documents_tools")
 
     def query_documents(
         self,
@@ -60,7 +63,17 @@ class DocumentsToolset:
         principal: Optional[Principal] = None,
     ) -> list[dict]:
         if not doc_key:
-            return self.documents_service.documents_available()
+            docs = self.documents_service.documents_available()
+            self.log.info(
+                "documents_available_scope",
+                doc_key=None,
+                principal_user_id=(principal.user_id if principal else None),
+                scoped_uuids_count=None,
+                global_docs_count=len(docs),
+                returned_docs_count=len(docs),
+            )
+            return docs
+        global_docs = self.documents_service.documents_available()
         scoped_uuids = set(
             self.documents_service.document_uuids_for_doc_key(
                 doc_key=doc_key,
@@ -68,11 +81,28 @@ class DocumentsToolset:
             )
         )
         if not scoped_uuids:
+            self.log.info(
+                "documents_available_scope",
+                doc_key=doc_key,
+                principal_user_id=(principal.user_id if principal else None),
+                scoped_uuids_count=0,
+                global_docs_count=len(global_docs),
+                returned_docs_count=0,
+            )
             return []
-        return [
-            d for d in self.documents_service.documents_available()
+        docs = [
+            d for d in global_docs
             if str(d.get("uuid") or "") in scoped_uuids
         ]
+        self.log.info(
+            "documents_available_scope",
+            doc_key=doc_key,
+            principal_user_id=(principal.user_id if principal else None),
+            scoped_uuids_count=len(scoped_uuids),
+            global_docs_count=len(global_docs),
+            returned_docs_count=len(docs),
+        )
+        return docs
 
 
 def query_tool_schemas() -> list[dict]:

@@ -431,13 +431,56 @@ class BayleafClient:
             use_auth=True,
         )
         if isinstance(data, dict) and data.get("error"):
+            self.log.info(
+                "documents_by_doc_key_response",
+                doc_key=doc_key,
+                principal_user_id=(principal.user_id if principal else None),
+                status_code=data.get("status_code"),
+                error=data.get("error"),
+                details=data.get("details"),
+                payload_type="error",
+                item_count=0,
+            )
             return []
         if isinstance(data, list):
-            return [item for item in data if isinstance(item, dict)]
+            items = [item for item in data if isinstance(item, dict)]
+            self.log.info(
+                "documents_by_doc_key_response",
+                doc_key=doc_key,
+                principal_user_id=(principal.user_id if principal else None),
+                status_code=200,
+                error=None,
+                details=None,
+                payload_type="list",
+                item_count=len(items),
+            )
+            return items
         if isinstance(data, dict):
             results = data.get("results")
             if isinstance(results, list):
-                return [item for item in results if isinstance(item, dict)]
+                items = [item for item in results if isinstance(item, dict)]
+                self.log.info(
+                    "documents_by_doc_key_response",
+                    doc_key=doc_key,
+                    principal_user_id=(principal.user_id if principal else None),
+                    status_code=200,
+                    error=None,
+                    details=None,
+                    payload_type="paginated",
+                    item_count=len(items),
+                    count=data.get("count"),
+                )
+                return items
+        self.log.info(
+            "documents_by_doc_key_response",
+            doc_key=doc_key,
+            principal_user_id=(principal.user_id if principal else None),
+            status_code=200 if data is not None else None,
+            error=None,
+            details=None,
+            payload_type=type(data).__name__ if data is not None else "none",
+            item_count=0,
+        )
         return []
 
 

@@ -498,12 +498,27 @@ class QdrantDocumentsService:
         principal: Optional[Principal],
     ) -> List[str]:
         if not doc_key.strip():
+            self.log.info(
+                "doc_key_uuid_resolution",
+                doc_key=doc_key,
+                principal_user_id=(principal.user_id if principal else None),
+                source_items_count=0,
+                extracted_uuids_count=0,
+            )
             return []
         docs = self.bayleaf.documents_by_doc_key(doc_key=doc_key.strip(), principal=principal)
         uuids: Set[str] = set()
         for item in docs:
             uuids.update(self._extract_document_uuids(item))
-        return sorted(uuids)
+        resolved = sorted(uuids)
+        self.log.info(
+            "doc_key_uuid_resolution",
+            doc_key=doc_key.strip(),
+            principal_user_id=(principal.user_id if principal else None),
+            source_items_count=len(docs),
+            extracted_uuids_count=len(resolved),
+        )
+        return resolved
 
     def get_document(self, document_uuid: str) -> Dict[str, Any]:
         _, points = self._find_latest_document_points(document_uuid=document_uuid)
