@@ -14,7 +14,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"] if settings.APP_ENV == "dev" else [],
+        allow_origins=["*"] if settings.APP_ENV == "dev" else ["https://labcopilot.nonnenmacher.tech"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
