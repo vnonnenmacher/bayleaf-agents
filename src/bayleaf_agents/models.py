@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, Text, DateTime, ForeignKey, Enum, JSON, Integer
+from sqlalchemy import String, Text, DateTime, ForeignKey, Enum, JSON, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 import enum
@@ -39,6 +39,25 @@ class ConversationGroup(Base):
 
     conversations: Mapped[list["Conversation"]] = relationship(
         back_populates="group",
+    )
+
+
+class UserMetadata(Base):
+    __tablename__ = "user_metadata"
+    __table_args__ = (
+        UniqueConstraint("owner_id", name="uq_user_metadata_owner"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
     )
 
 

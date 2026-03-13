@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..auth.deps import Principal, require_auth
 from ..db import get_db
-from ..models import Conversation, ConversationGroup, ConversationGroupType, Message, Role
+from ..models import Conversation, ConversationGroup, ConversationGroupType, Message, Role, UserMetadata
 from ..schemas.chat import (
     ChatRequest,
     ChatResponse,
@@ -16,11 +16,14 @@ from ..schemas.chat import (
     ConversationGroupCreateRequest,
     ConversationGroupSummary,
     ConversationGroupsResponse,
+    ConversationGroupPutRequest,
     ConversationGroupUpdateRequest,
     ConversationsResponse,
     ConversationSummary,
     PaginationInfo,
     SafetyInfo,
+    UserMetadataResponse,
+    UserMetadataUpsertRequest,
 )
 from ..services.agent_registry import discover_agents
 from ..services.factories import (
@@ -95,6 +98,15 @@ def _group_summary(group: ConversationGroup) -> ConversationGroupSummary:
         document_uuids=_normalize_document_uuids(group.document_uuids),
         created_at=group.created_at,
         updated_at=group.updated_at,
+    )
+
+
+def _user_metadata_summary(item: UserMetadata) -> UserMetadataResponse:
+    return UserMetadataResponse(
+        owner_id=item.owner_id,
+        metadata=item.metadata_json or {},
+        created_at=item.created_at,
+        updated_at=item.updated_at,
     )
 
 
@@ -211,6 +223,23 @@ async def update_conversation_group(
         group.metadata_json = req.metadata
     if req.document_uuids is not None:
         group.document_uuids = _normalize_document_uuids(req.document_uuids)
+    db.add(group)
+    db.commit()
+    db.refresh(group)
+    return _group_summary(group)
+
+
+@router.put("/conversation-groups/{group_id}", response_model=ConversationGroupSummary)
+async def put_conversation_group(
+    group_id: str,
+    req: ConversationGroupPutRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_auth()),
+):
+    owner_id = _require_user_id(principal)
+    group = _resolve_owned_group(db, owner_id=owner_id, group_id=group_id)
+    group.metadata_json = req.metadata or {}
+    group.document_uuids = _normalize_document_uuids(req.document_uuids)
     db.add(group)
     db.commit()
     db.refresh(group)
@@ -336,6 +365,50 @@ async def list_conversations(
             has_more=(offset + len(items)) < total,
         ),
     )
+
+
+@router.put("/user-metadata", response_model=UserMetadataResponse)
+async def upsert_user_metadata(
+    req: UserMetadataUpsertRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_auth()),
+):
+    owner_id = _require_user_id(principal)
+
+    item = (
+        db.query(UserMetadata)
+        .filter(UserMetadata.owner_id == owner_id)
+        .first()
+    )
+    if not item:
+        item = UserMetadata(owner_id=owner_id, metadata_json=req.metadata or {})
+    else:
+        item.metadata_json = req.metadata or {}
+
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return _user_metadata_summary(item)
+
+
+@router.get("/user-metadata", response_model=UserMetadataResponse)
+async def get_user_metadata(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_auth()),
+):
+    owner_id = _require_user_id(principal)
+
+    item = (
+        db.query(UserMetadata)
+        .filter(UserMetadata.owner_id == owner_id)
+        .first()
+    )
+    if not item:
+        item = UserMetadata(owner_id=owner_id, metadata_json={})
+        db.add(item)
+        db.commit()
+        db.refresh(item)
+    return _user_metadata_summary(item)
 
 
 @router.get(

@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+import asyncio
 
 from bayleaf_agents.agents.base_agent import BaseAgent
 from bayleaf_agents.llm.mock import MockProvider
@@ -7,8 +8,10 @@ import pytest
 
 from fastapi import HTTPException
 
+from bayleaf_agents.auth.deps import Principal
 from bayleaf_agents.models import Base, Conversation, ConversationGroup, ConversationGroupType
-from bayleaf_agents.routers.agents import _resolve_owned_group, _resolve_user_conversation
+from bayleaf_agents.routers.agents import _resolve_owned_group, _resolve_user_conversation, put_conversation_group
+from bayleaf_agents.schemas.chat import ConversationGroupPutRequest
 from bayleaf_agents.tools.bayleaf import BayleafClient
 
 
@@ -148,3 +151,42 @@ def test_get_or_create_conversation_sets_name_from_initial_message():
     )
 
     assert conv.name == "Need appointment for severe back pain"
+
+
+def test_put_conversation_group_replaces_metadata_and_document_uuids():
+    db = _session()
+    group = ConversationGroup(
+        owner_id="user-1",
+        type=ConversationGroupType.project,
+        metadata_json={"old": "value"},
+        document_uuids=["doc-1"],
+        is_active=True,
+    )
+    db.add(group)
+    db.commit()
+    db.refresh(group)
+
+    principal = Principal(
+        user_id="user-1",
+        sub="user-1",
+        scopes=[],
+        patient_id=None,
+        raw={},
+        raw_token="token",
+    )
+    req = ConversationGroupPutRequest(
+        metadata={"team": "clinical"},
+        document_uuids=["doc-2", "doc-2", "doc-3"],
+    )
+
+    result = asyncio.run(
+        put_conversation_group(
+            group_id=group.id,
+            req=req,
+            db=db,
+            principal=principal,
+        )
+    )
+
+    assert result.metadata == {"team": "clinical"}
+    assert result.document_uuids == ["doc-2", "doc-3"]

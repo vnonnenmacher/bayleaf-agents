@@ -83,6 +83,11 @@ class ConversationGroupUpdateRequest(BaseModel):
     document_uuids: Optional[list[str]] = None
 
 
+class ConversationGroupPutRequest(BaseModel):
+    metadata: dict = Field(default_factory=dict)
+    document_uuids: list[str] = Field(default_factory=list)
+
+
 class ConversationGroupSummary(BaseModel):
     id: str
     owner_id: str
@@ -97,3 +102,14 @@ class ConversationGroupSummary(BaseModel):
 class ConversationGroupsResponse(BaseModel):
     items: list[ConversationGroupSummary]
     pagination: PaginationInfo
+
+
+class UserMetadataUpsertRequest(BaseModel):
+    metadata: dict = Field(default_factory=dict)
+
+
+class UserMetadataResponse(BaseModel):
+    owner_id: str
+    metadata: dict
+    created_at: datetime
+    updated_at: datetime
