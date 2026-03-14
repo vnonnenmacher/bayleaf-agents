@@ -66,10 +66,10 @@ curl -sS -X POST http://localhost:8080/chat \
 ## API
 
 * `GET /health` → `{ status, env, provider }`
-* `POST /agents/documents/index/` → index by `document_version_uuid` (form field) or uploaded `file`
-* `GET /agents/documents-available/` → list indexed documents from Qdrant
-* `GET /agents/documents/{uuid}/` → indexed document status from Qdrant
-* `POST /agents/documents/{uuid}/reindex/` → reindex document in Qdrant
+* `POST /agents/documents/index` → index by `document_version_uuid` (form field) or uploaded `file`
+* `GET /agents/documents-available` → list indexed documents from Qdrant
+* `GET /agents/documents/{uuid}` → indexed document status from Qdrant
+* `POST /agents/documents/{uuid}/reindex` → reindex document in Qdrant
 * `POST /chat` → body:
 
   ```json

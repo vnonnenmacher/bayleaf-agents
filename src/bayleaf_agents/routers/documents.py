@@ -72,7 +72,7 @@ def _raise_document_error(exc: DocumentServiceError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=detail) from exc
 
 
-@router.post("/documents/index/", response_model=IndexedDocument)
+@router.post("/documents/index", response_model=IndexedDocument)
 async def index_document(
     req: DocumentIndexRequest,
     principal: Principal = Depends(require_auth()),
@@ -89,7 +89,7 @@ async def index_document(
         _raise_document_error(exc)
 
 
-@router.post("/documents/index/upload/", response_model=IndexedDocument)
+@router.post("/documents/index/upload", response_model=IndexedDocument)
 async def index_document_upload(
     file: UploadFile = File(...),
     model_used: str | None = Form(default=None),
@@ -110,7 +110,7 @@ async def index_document_upload(
         _raise_document_error(exc)
 
 
-@router.get("/documents-available/", response_model=DocumentsAvailableResponse)
+@router.get("/documents-available", response_model=DocumentsAvailableResponse)
 async def documents_available(
     principal: Principal = Depends(require_auth()),
 ):
@@ -123,7 +123,7 @@ async def documents_available(
         _raise_document_error(exc)
 
 
-@router.get("/documents/{document_uuid}/", response_model=IndexedDocument)
+@router.get("/documents/{document_uuid}", response_model=IndexedDocument)
 async def get_document(
     document_uuid: str,
     principal: Principal = Depends(require_auth()),
@@ -137,7 +137,7 @@ async def get_document(
         _raise_document_error(exc)
 
 
-@router.post("/documents/query/", response_model=DocumentQueryResponse)
+@router.post("/documents/query", response_model=DocumentQueryResponse)
 async def query_documents(
     req: DocumentQueryRequest,
     principal: Principal = Depends(require_auth()),
@@ -165,7 +165,7 @@ async def query_documents(
         _raise_document_error(exc)
 
 
-@router.post("/documents/{document_uuid}/reindex/", response_model=IndexedDocument)
+@router.post("/documents/{document_uuid}/reindex", response_model=IndexedDocument)
 async def reindex_document(
     document_uuid: str,
     req: DocumentReindexRequest = DocumentReindexRequest(),
