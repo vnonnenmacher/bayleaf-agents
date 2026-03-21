@@ -407,13 +407,13 @@ class BayleafClient:
             "location": data.get("location"),
         }
 
-    def document_version_download_url(
+    def document_download_url(
         self,
-        document_version_uuid: str,
+        document_uuid: str,
         principal: Principal,
     ) -> Dict[str, Any]:
         return self._get(
-            f"/api/documents/versions/{document_version_uuid}/download-url/",
+            f"/api/documents/{document_uuid}/download-url/",
             principal=principal,
             use_auth=True,
         )

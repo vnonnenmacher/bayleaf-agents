@@ -23,7 +23,7 @@ class DocumentsAvailableResponse(BaseModel):
 
 
 class DocumentIndexRequest(BaseModel):
-    document_version_uuid: str
+    document_uuid: str
     model_used: str | None = None
 
 
@@ -79,8 +79,8 @@ async def index_document(
 ):
     service = get_qdrant_documents()
     try:
-        indexed = service.index_document_version(
-            document_version_uuid=req.document_version_uuid,
+        indexed = service.index_document(
+            document_uuid=req.document_uuid,
             principal=principal,
             model_used=req.model_used,
         )

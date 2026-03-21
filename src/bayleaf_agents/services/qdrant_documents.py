@@ -227,7 +227,7 @@ class QdrantDocumentsService:
         filename: str,
         mime_type: Optional[str],
         source_type: str,
-        bayleaf_document_version_uuid: Optional[str],
+        bayleaf_document_uuid: Optional[str],
         text: str,
         status: str,
         content_sha256: str,
@@ -255,7 +255,7 @@ class QdrantDocumentsService:
                         "mime_type": mime_type,
                         "source_type": source_type,
                         "is_bayleaf": source_type == "bayleaf",
-                        "bayleaf_document_version_uuid": bayleaf_document_version_uuid,
+                        "bayleaf_document_uuid": bayleaf_document_uuid,
                         "model_used": model_used,
                         "status": status,
                         "indexed_at": indexed_at,
@@ -323,15 +323,15 @@ class QdrantDocumentsService:
 
         return None
 
-    def index_document_version(
+    def index_document(
         self,
-        document_version_uuid: str,
+        document_uuid: str,
         principal: Principal,
         model_used: Optional[str] = None,
     ) -> Dict[str, Any]:
         model = self._resolve_model(model_used)
-        data = self.bayleaf.document_version_download_url(
-            document_version_uuid=document_version_uuid,
+        data = self.bayleaf.document_download_url(
+            document_uuid=document_uuid,
             principal=principal,
         )
         if not isinstance(data, dict):
@@ -347,11 +347,11 @@ class QdrantDocumentsService:
         text, status = self._extract_text(content, filename, mime_type)
         digest = hashlib.sha256(content).hexdigest()
         return self._index_payload(
-            document_uuid=document_version_uuid,
+            document_uuid=document_uuid,
             filename=filename,
             mime_type=mime_type,
             source_type="bayleaf",
-            bayleaf_document_version_uuid=document_version_uuid,
+            bayleaf_document_uuid=document_uuid,
             text=text,
             status=status,
             content_sha256=digest,
@@ -375,7 +375,7 @@ class QdrantDocumentsService:
             filename=filename,
             mime_type=mime_type,
             source_type="uploaded",
-            bayleaf_document_version_uuid=None,
+            bayleaf_document_uuid=None,
             text=text,
             status=status,
             content_sha256=digest,
@@ -546,9 +546,10 @@ class QdrantDocumentsService:
 
         payload = (source_points[0] or {}).get("payload") or {}
         source_type = payload.get("source_type")
-        if source_type == "bayleaf" and payload.get("bayleaf_document_version_uuid"):
-            return self.index_document_version(
-                document_version_uuid=str(payload.get("bayleaf_document_version_uuid")),
+        bayleaf_document_uuid = payload.get("bayleaf_document_uuid") or payload.get("bayleaf_document_version_uuid")
+        if source_type == "bayleaf" and bayleaf_document_uuid:
+            return self.index_document(
+                document_uuid=str(bayleaf_document_uuid),
                 principal=principal,
                 model_used=target_model,
             )
@@ -564,7 +565,7 @@ class QdrantDocumentsService:
             filename=filename,
             mime_type=mime_type,
             source_type="uploaded",
-            bayleaf_document_version_uuid=None,
+            bayleaf_document_uuid=None,
             text=text or f"document {document_uuid}",
             status=status,
             content_sha256=digest,
