@@ -479,10 +479,17 @@ class QdrantDocumentsService:
 
         def _walk(node: Any):
             if isinstance(node, dict):
+                lowered_keys = {str(key).lower() for key in node.keys()}
+                is_document_item_with_id = "id" in lowered_keys and "doc_key" in lowered_keys and "reference" in lowered_keys
                 for key, value in node.items():
                     key_text = str(key).lower()
-                    if isinstance(value, str) and "uuid" in key_text and uuid_pattern.match(value.strip()):
-                        collected.add(value.strip())
+                    if isinstance(value, str):
+                        value_text = value.strip()
+                        if uuid_pattern.match(value_text):
+                            if "uuid" in key_text:
+                                collected.add(value_text)
+                            elif key_text == "id" and is_document_item_with_id:
+                                collected.add(value_text)
                     _walk(value)
             elif isinstance(node, list):
                 for item in node:

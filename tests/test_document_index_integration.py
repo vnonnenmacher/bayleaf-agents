@@ -108,3 +108,35 @@ def test_reindex_bayleaf_document_accepts_legacy_payload_key(monkeypatch):
     assert out == {"uuid": "legacy-doc-uuid"}
     assert captured["document_uuid"] == "legacy-doc-uuid"
     assert captured["principal"] == principal
+
+
+def test_extract_document_uuids_accepts_document_id_when_uuid():
+    service = _service(bayleaf=object())
+    document_uuid = "d616ccac-4f2c-4cc2-adcb-4c804f8a8d88"
+
+    out = service._extract_document_uuids(
+        {
+            "id": document_uuid,
+            "org": "b272db0e-76df-4e13-94e9-2cb01c68978d",
+            "doc_key": "lab.sop.hemato",
+            "name": "POP Hemato",
+            "reference": "minio://bucket/path",
+            "created_by": "ffafcb80-4191-43e6-aaa2-c1a197a49aa5",
+        }
+    )
+
+    assert out == {document_uuid}
+
+
+def test_extract_document_uuids_rejects_document_id_when_not_uuid():
+    service = _service(bayleaf=object())
+
+    out = service._extract_document_uuids(
+        {
+            "id": "doc-123",
+            "doc_key": "lab.sop.hemato",
+            "reference": "minio://bucket/path",
+        }
+    )
+
+    assert out == set()
