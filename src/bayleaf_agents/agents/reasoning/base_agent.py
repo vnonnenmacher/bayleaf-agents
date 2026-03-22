@@ -135,25 +135,6 @@ class ReasoningBaseAgent(BaseAgent):
                 chunk_tokens.update(self._tokenize(str(chunk.get("text_chunk") or "")))
         return any(token not in chunk_tokens for token in user_shift_tokens)
 
-    def _research_documents_from_prefetch(self, prefetch_result: Optional[Dict[str, Any]]) -> List[Dict[str, str]]:
-        if not isinstance(prefetch_result, dict):
-            return []
-        chunks = prefetch_result.get("chunks")
-        if not isinstance(chunks, list):
-            return []
-        out: List[Dict[str, str]] = []
-        seen: set[str] = set()
-        for chunk in chunks:
-            if not isinstance(chunk, dict):
-                continue
-            doc_uuid = str(chunk.get("document_uuid") or "").strip()
-            name = str(chunk.get("name") or "").strip()
-            if not doc_uuid or not name or doc_uuid in seen:
-                continue
-            seen.add(doc_uuid)
-            out.append({"name": name, "uuid": doc_uuid})
-        return out
-
     def chat(
         self,
         db: Session,
@@ -313,6 +294,7 @@ class ReasoningBaseAgent(BaseAgent):
                     {
                         "document_uuid": c.get("document_uuid"),
                         "name": c.get("name"),
+                        "chunk_index": c.get("chunk_index"),
                         "score": c.get("score"),
                         "text_chunk": str(c.get("text_chunk") or "")[:700],
                     }
@@ -336,14 +318,4 @@ class ReasoningBaseAgent(BaseAgent):
             group_context=effective_group_context or None,
             forced_document_ids=forced_document_ids,
         )
-        prefetched_docs = self._research_documents_from_prefetch(prefetch_result)
-        if prefetched_docs:
-            existing = result.get("research_documents") or []
-            seen = {str(d.get("uuid") or "") for d in existing if isinstance(d, dict)}
-            for doc in prefetched_docs:
-                if doc["uuid"] in seen:
-                    continue
-                existing.append(doc)
-                seen.add(doc["uuid"])
-            result["research_documents"] = existing
         return result

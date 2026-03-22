@@ -374,25 +374,225 @@ class BaseAgent:
             normalized.append(value)
         return normalized
 
-    def _collect_research_documents(
+    def _safe_float(self, value: Any) -> Optional[float]:
+        try:
+            if value is None:
+                return None
+            return float(value)
+        except Exception:
+            return None
+
+    def _chunk_ref(self, chunk: Dict[str, Any], fallback_index: int) -> str:
+        doc_uuid = str(chunk.get("document_uuid") or "").strip() or "unknown-doc"
+        chunk_index_raw = chunk.get("chunk_index")
+        if isinstance(chunk_index_raw, int):
+            chunk_index = chunk_index_raw
+        else:
+            try:
+                chunk_index = int(str(chunk_index_raw))
+            except Exception:
+                chunk_index = fallback_index
+        return f"{doc_uuid}#{chunk_index}"
+
+    def _collect_retrieved_chunks(
         self,
-        result: Dict[str, Any],
+        payload: Dict[str, Any],
         *,
-        collected: List[Dict[str, str]],
-        seen: set[str],
+        collected: List[Dict[str, Any]],
+        seen_refs: set[str],
     ) -> None:
-        chunks = result.get("chunks")
+        chunks = payload.get("chunks")
         if not isinstance(chunks, list):
             return
+        for idx, chunk in enumerate(chunks):
+            if not isinstance(chunk, dict):
+                continue
+            doc_uuid = str(chunk.get("document_uuid") or "").strip()
+            doc_name = str(chunk.get("name") or "").strip()
+            text_chunk = str(chunk.get("text_chunk") or "").strip()
+            if not doc_uuid or not doc_name or not text_chunk:
+                continue
+            chunk_ref = self._chunk_ref(chunk, fallback_index=idx)
+            if chunk_ref in seen_refs:
+                continue
+            seen_refs.add(chunk_ref)
+            collected.append(
+                {
+                    "chunk_ref": chunk_ref,
+                    "document_uuid": doc_uuid,
+                    "document_name": doc_name,
+                    "chunk_index": chunk.get("chunk_index"),
+                    "text_chunk": text_chunk,
+                    "score": self._safe_float(chunk.get("score")),
+                }
+            )
+
+    def _collect_retrieved_chunks_from_group_context(
+        self,
+        group_context: Optional[Dict[str, Any]],
+        *,
+        collected: List[Dict[str, Any]],
+        seen_refs: set[str],
+    ) -> None:
+        if not isinstance(group_context, dict):
+            return
+        retrieval_context = group_context.get("retrieval_context")
+        if not isinstance(retrieval_context, dict):
+            return
+        self._collect_retrieved_chunks(retrieval_context, collected=collected, seen_refs=seen_refs)
+
+    def _documents_from_chunks(self, chunks: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+        out: List[Dict[str, str]] = []
+        seen: set[str] = set()
         for chunk in chunks:
             if not isinstance(chunk, dict):
                 continue
             doc_uuid = str(chunk.get("document_uuid") or "").strip()
-            name = str(chunk.get("name") or "").strip()
-            if not doc_uuid or not name or doc_uuid in seen:
+            doc_name = str(chunk.get("document_name") or "").strip()
+            if not doc_uuid or not doc_name or doc_uuid in seen:
                 continue
             seen.add(doc_uuid)
-            collected.append({"name": name, "uuid": doc_uuid})
+            out.append({"name": doc_name, "uuid": doc_uuid})
+        return out
+
+    def _documents_from_citations(self, citations: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+        out: List[Dict[str, str]] = []
+        seen: set[str] = set()
+        for citation in citations:
+            if not isinstance(citation, dict):
+                continue
+            doc_uuid = str(citation.get("document_uuid") or "").strip()
+            doc_name = str(citation.get("document_name") or "").strip()
+            if not doc_uuid or not doc_name or doc_uuid in seen:
+                continue
+            seen.add(doc_uuid)
+            out.append({"name": doc_name, "uuid": doc_uuid})
+        return out
+
+    def _parse_json_object(self, raw: str) -> Optional[Dict[str, Any]]:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                return parsed
+            return None
+        except Exception:
+            pass
+        match = re.search(r"\{.*\}", raw, flags=re.S)
+        if not match:
+            return None
+        try:
+            parsed = json.loads(match.group(0))
+            if isinstance(parsed, dict):
+                return parsed
+            return None
+        except Exception:
+            return None
+
+    def _extract_citations(
+        self,
+        *,
+        answer: str,
+        retrieved_chunks: List[Dict[str, Any]],
+        lang: str,
+    ) -> List[Dict[str, Any]]:
+        if not answer.strip() or not retrieved_chunks:
+            return []
+
+        catalog: List[Dict[str, Any]] = []
+        for chunk in retrieved_chunks:
+            if not isinstance(chunk, dict):
+                continue
+            text_chunk = str(chunk.get("text_chunk") or "").strip()
+            if not text_chunk:
+                continue
+            catalog.append(
+                {
+                    "chunk_ref": str(chunk.get("chunk_ref") or ""),
+                    "document_uuid": str(chunk.get("document_uuid") or ""),
+                    "document_name": str(chunk.get("document_name") or ""),
+                    "score": chunk.get("score"),
+                    "text_chunk": text_chunk[:1200],
+                }
+            )
+        if not catalog:
+            return []
+
+        system_prompt = (
+            "You are CitationExtractor.\n"
+            "Given an answer and retrieved chunks, return ONLY strict JSON with this shape:\n"
+            '{"citations":[{"id":"c1","document_uuid":"...","document_name":"...","chunk_ref":"doc#idx","evidence_text":"..."}]}\n'
+            "Rules:\n"
+            "- Only cite chunks that directly support concrete claims in the answer.\n"
+            "- chunk_ref MUST be one of the provided chunk_ref values.\n"
+            "- Keep evidence_text short (max 240 chars).\n"
+            "- If no chunk directly supports the answer, return {\"citations\":[]}."
+        )
+        user_prompt = (
+            f"Language: {lang}\n\n"
+            f"Answer:\n{answer}\n\n"
+            f"Retrieved chunks catalog:\n{json.dumps(catalog, ensure_ascii=False)}"
+        )
+
+        try:
+            out = self.provider.chat(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                tools=[],
+            )
+        except Exception:
+            return []
+
+        parsed = self._parse_json_object(str(out.get("reply") or ""))
+        if not parsed:
+            return []
+        raw_citations = parsed.get("citations")
+        if not isinstance(raw_citations, list):
+            return []
+
+        catalog_by_ref = {
+            str(item.get("chunk_ref") or "").strip(): item
+            for item in catalog
+            if str(item.get("chunk_ref") or "").strip()
+        }
+        citations: List[Dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        seen_refs: set[str] = set()
+        next_idx = 1
+
+        for item in raw_citations:
+            if not isinstance(item, dict):
+                continue
+            chunk_ref = str(item.get("chunk_ref") or "").strip()
+            source = catalog_by_ref.get(chunk_ref)
+            if not source or chunk_ref in seen_refs:
+                continue
+            doc_uuid = str(item.get("document_uuid") or source.get("document_uuid") or "").strip()
+            doc_name = str(item.get("document_name") or source.get("document_name") or "").strip()
+            if not doc_uuid or not doc_name or doc_uuid != str(source.get("document_uuid") or "").strip():
+                continue
+            citation_id = str(item.get("id") or "").strip() or f"c{next_idx}"
+            if citation_id in seen_ids:
+                citation_id = f"c{next_idx}"
+            evidence_text = str(item.get("evidence_text") or "").strip()
+            if not evidence_text:
+                evidence_text = str(source.get("text_chunk") or "")[:240]
+            citations.append(
+                {
+                    "id": citation_id,
+                    "document_uuid": doc_uuid,
+                    "document_name": doc_name,
+                    "chunk_ref": chunk_ref,
+                    "evidence_text": evidence_text[:240],
+                    "retrieval_score": self._safe_float(source.get("score")),
+                }
+            )
+            seen_ids.add(citation_id)
+            seen_refs.add(chunk_ref)
+            next_idx += 1
+
+        return citations
 
     def _get_objective(self, lang: str) -> str:
         """Pick objective text in the requested language, fallback to en-US."""
@@ -506,8 +706,13 @@ class BaseAgent:
         out = self.provider.chat(messages, tools)
 
         used_tools: List[str] = []
-        research_documents: List[Dict[str, str]] = []
-        research_document_uuids: set[str] = set()
+        retrieved_chunks: List[Dict[str, Any]] = []
+        retrieved_chunk_refs: set[str] = set()
+        self._collect_retrieved_chunks_from_group_context(
+            group_context,
+            collected=retrieved_chunks,
+            seen_refs=retrieved_chunk_refs,
+        )
         reply = out.get("reply", "Ok.")
         state_changed = False
         placeholder_mapping = self._placeholder_map(db, conv.id)
@@ -557,10 +762,10 @@ class BaseAgent:
                     forced_document_ids=normalized_forced_ids,
                 )
                 if name == "query_documents" and isinstance(result, dict):
-                    self._collect_research_documents(
+                    self._collect_retrieved_chunks(
                         result,
-                        collected=research_documents,
-                        seen=research_document_uuids,
+                        collected=retrieved_chunks,
+                        seen_refs=retrieved_chunk_refs,
                     )
 
                 state_changed = self.state_handler.apply(
@@ -614,6 +819,13 @@ class BaseAgent:
 
         # Restore placeholders for user-facing reply (keep redacted copy persisted)
         restored_reply = self._restore_placeholders(reply, placeholder_mapping)
+        citations = self._extract_citations(
+            answer=reply,
+            retrieved_chunks=retrieved_chunks,
+            lang=lang,
+        )
+        cited_documents = self._documents_from_citations(citations)
+        retrieved_documents = self._documents_from_chunks(retrieved_chunks)
         db.add(Message(conversation_id=conv.id, role=Role.assistant, content=restored_reply, redacted_content=reply))
         db.commit()
 
@@ -627,7 +839,9 @@ class BaseAgent:
         return {
             "reply": restored_reply,
             "used_tools": used_tools,
-            "research_documents": research_documents,
+            "cited_documents": cited_documents,
+            "retrieved_documents": retrieved_documents,
+            "citations": citations,
             "trace_id": trace,
             "conversation_id": conv.external_id or conv.id,
             "conversation_name": conv.name,

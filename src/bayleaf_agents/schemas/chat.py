@@ -22,10 +22,21 @@ class ResearchDocument(BaseModel):
     uuid: str
 
 
+class Citation(BaseModel):
+    id: str
+    document_uuid: str
+    document_name: str
+    chunk_ref: str
+    evidence_text: str
+    retrieval_score: Optional[float] = None
+
+
 class ChatResponse(BaseModel):
     reply: str
     used_tools: list[str]
-    research_documents: list[ResearchDocument] = Field(default_factory=list)
+    cited_documents: list[ResearchDocument] = Field(default_factory=list)
+    retrieved_documents: list[ResearchDocument] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
     safety: SafetyInfo
     trace_id: str
     conversation_id: str

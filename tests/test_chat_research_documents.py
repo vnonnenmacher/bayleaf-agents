@@ -23,6 +23,15 @@ class QueryDocumentsProvider(LLMProvider):
 
     def chat(self, messages, tools):
         self.calls += 1
+        system = (messages[0]["content"] if messages else "") if isinstance(messages, list) else ""
+        if isinstance(system, str) and "CitationExtractor" in system:
+            return {
+                "reply": (
+                    '{"citations":[{"id":"c1","document_uuid":"doc-1","document_name":"Clinical Guide",'
+                    '"chunk_ref":"doc-1#0","evidence_text":"Hydration and rest are recommended in mild headache cases."}]}'
+                ),
+                "tool_calls": [],
+            }
         if tools:
             return {
                 "reply": "",
@@ -37,16 +46,34 @@ class StubDocumentsTools:
     def query_documents(self, **kwargs):
         return {
             "chunks": [
-                {"document_uuid": "doc-1", "name": "Clinical Guide"},
-                {"document_uuid": "doc-1", "name": "Clinical Guide"},
-                {"document_uuid": "doc-2", "name": "Medication Reference"},
-                {"document_uuid": "doc-3", "name": ""},
+                {
+                    "document_uuid": "doc-1",
+                    "name": "Clinical Guide",
+                    "chunk_index": 0,
+                    "score": 0.95,
+                    "text_chunk": "Hydration and rest are recommended in mild headache cases.",
+                },
+                {
+                    "document_uuid": "doc-1",
+                    "name": "Clinical Guide",
+                    "chunk_index": 1,
+                    "score": 0.90,
+                    "text_chunk": "Seek emergency care if severe neurological symptoms appear.",
+                },
+                {
+                    "document_uuid": "doc-2",
+                    "name": "Medication Reference",
+                    "chunk_index": 0,
+                    "score": 0.75,
+                    "text_chunk": "Analgesic options include acetaminophen for eligible adults.",
+                },
+                {"document_uuid": "doc-3", "name": "", "chunk_index": 0, "score": 0.7, "text_chunk": "ignored"},
             ],
             "trace": {"trace_id": "retr_demo"},
         }
 
 
-def test_chat_returns_research_documents_from_query_results():
+def test_chat_returns_cited_and_retrieved_documents():
     db = _session()
     provider = QueryDocumentsProvider()
     agent = BaseAgent(
@@ -75,7 +102,18 @@ def test_chat_returns_research_documents_from_query_results():
         agent_slug="labcopilot",
     )
 
-    assert result["research_documents"] == [
+    assert result["retrieved_documents"] == [
         {"name": "Clinical Guide", "uuid": "doc-1"},
         {"name": "Medication Reference", "uuid": "doc-2"},
+    ]
+    assert result["cited_documents"] == [{"name": "Clinical Guide", "uuid": "doc-1"}]
+    assert result["citations"] == [
+        {
+            "id": "c1",
+            "document_uuid": "doc-1",
+            "document_name": "Clinical Guide",
+            "chunk_ref": "doc-1#0",
+            "evidence_text": "Hydration and rest are recommended in mild headache cases.",
+            "retrieval_score": 0.95,
+        }
     ]
