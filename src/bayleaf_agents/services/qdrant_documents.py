@@ -480,7 +480,7 @@ class QdrantDocumentsService:
         def _walk(node: Any):
             if isinstance(node, dict):
                 lowered_keys = {str(key).lower() for key in node.keys()}
-                is_document_item_with_id = "id" in lowered_keys and "doc_key" in lowered_keys and "reference" in lowered_keys
+                is_document_item_with_id = "id" in lowered_keys and "doc_key" in lowered_keys
                 for key, value in node.items():
                     key_text = str(key).lower()
                     if isinstance(value, str):

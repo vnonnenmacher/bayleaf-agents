@@ -6,6 +6,14 @@ from .bayleaf_auth import TokenProvider
 from ..auth.deps import Principal
 
 
+class BayleafAuthError(Exception):
+    def __init__(self, *, status_code: int, error: str, details: Any = None):
+        self.status_code = status_code
+        self.error = error
+        self.details = details
+        super().__init__(error)
+
+
 class BayleafClient:
     def __init__(self, base: str, timeout: int = 15):
         self.base = base.rstrip("/")
@@ -431,6 +439,25 @@ class BayleafClient:
             use_auth=True,
         )
         if isinstance(data, dict) and data.get("error"):
+            status_code = int(data.get("status_code") or 0)
+            details = data.get("details")
+            if status_code == 401 and isinstance(details, dict):
+                if str(details.get("code") or "").strip() == "token_not_valid":
+                    messages = details.get("messages")
+                    is_expired = False
+                    if isinstance(messages, list):
+                        for msg in messages:
+                            if isinstance(msg, dict):
+                                text = str(msg.get("message") or "").lower()
+                                if "expired" in text:
+                                    is_expired = True
+                                    break
+                    if is_expired:
+                        raise BayleafAuthError(
+                            status_code=401,
+                            error="token_expired",
+                            details=details,
+                        )
             self.log.info(
                 "documents_by_doc_key_response",
                 doc_key=doc_key,

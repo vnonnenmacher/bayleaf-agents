@@ -1,3 +1,5 @@
+import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import structlog
@@ -24,34 +26,53 @@ class DocumentsToolset:
         doc_key: Optional[str] = None,
         principal: Optional[Principal] = None,
     ) -> Dict[str, Any]:
-        resolved_document_uuids = list(document_uuids or [])
         if doc_key:
             scoped_uuids = self.documents_service.document_uuids_for_doc_key(
                 doc_key=doc_key,
                 principal=principal,
             )
-            if document_uuid:
-                if document_uuid in scoped_uuids:
-                    resolved_document_uuids = [document_uuid]
-                else:
-                    resolved_document_uuids = []
-            else:
-                if resolved_document_uuids:
-                    allowed = set(scoped_uuids)
-                    resolved_document_uuids = [doc_id for doc_id in resolved_document_uuids if doc_id in allowed]
-                else:
-                    resolved_document_uuids = scoped_uuids
-
-        resolved_document_uuid = document_uuid
-        if resolved_document_uuids:
-            resolved_document_uuid = None
+            self.log.info(
+                "documents_query_scope_debug",
+                doc_key=doc_key,
+                principal_user_id=(principal.user_id if principal else None),
+                scoped_uuids_count=len(scoped_uuids),
+                scoped_uuids=scoped_uuids[:20],
+            )
+            if not scoped_uuids:
+                resolved_model = str(model_used or getattr(self.documents_service, "default_model", ""))
+                return {
+                    "query": query,
+                    "top_k": top_k,
+                    "model_used": resolved_model,
+                    "chunks": [],
+                    "trace": {
+                        "trace_id": f"retr_{uuid.uuid4().hex[:12]}",
+                        "retrieved_at": datetime.now(timezone.utc).isoformat(),
+                        "collection": None,
+                        "model_used": resolved_model,
+                        "query_filter": {"should": []},
+                        "requested_top_k": top_k,
+                        "returned_chunks": 0,
+                        "scope_mode": "doc_key_strict",
+                        "scope_reason": "doc_key_no_documents",
+                    },
+                }
+            return self.documents_service.query_documents(
+                query=query,
+                top_k=top_k,
+                model_used=model_used,
+                document_uuid=None,
+                document_uuids=scoped_uuids,
+                source_type=source_type,
+                is_bayleaf=is_bayleaf,
+            )
 
         return self.documents_service.query_documents(
             query=query,
             top_k=top_k,
             model_used=model_used,
-            document_uuid=resolved_document_uuid,
-            document_uuids=resolved_document_uuids or None,
+            document_uuid=document_uuid,
+            document_uuids=document_uuids,
             source_type=source_type,
             is_bayleaf=is_bayleaf,
         )
@@ -74,6 +95,11 @@ class DocumentsToolset:
             )
             return docs
         global_docs = self.documents_service.documents_available()
+        global_uuids = [
+            str(d.get("uuid") or "")
+            for d in global_docs
+            if str(d.get("uuid") or "")
+        ]
         scoped_uuids = set(
             self.documents_service.document_uuids_for_doc_key(
                 doc_key=doc_key,
@@ -89,10 +115,23 @@ class DocumentsToolset:
                 global_docs_count=len(global_docs),
                 returned_docs_count=0,
             )
+            self.log.info(
+                "documents_available_scope_debug",
+                doc_key=doc_key,
+                principal_user_id=(principal.user_id if principal else None),
+                global_uuids_sample=global_uuids[:20],
+                scoped_uuids=[],
+                returned_uuids=[],
+            )
             return []
         docs = [
             d for d in global_docs
             if str(d.get("uuid") or "") in scoped_uuids
+        ]
+        returned_uuids = [
+            str(d.get("uuid") or "")
+            for d in docs
+            if str(d.get("uuid") or "")
         ]
         self.log.info(
             "documents_available_scope",
@@ -101,6 +140,14 @@ class DocumentsToolset:
             scoped_uuids_count=len(scoped_uuids),
             global_docs_count=len(global_docs),
             returned_docs_count=len(docs),
+        )
+        self.log.info(
+            "documents_available_scope_debug",
+            doc_key=doc_key,
+            principal_user_id=(principal.user_id if principal else None),
+            global_uuids_sample=global_uuids[:20],
+            scoped_uuids=sorted(scoped_uuids)[:20],
+            returned_uuids=returned_uuids[:20],
         )
         return docs
 

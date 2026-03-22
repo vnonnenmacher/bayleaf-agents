@@ -33,6 +33,7 @@ from ..services.factories import (
     get_phi_filter,
     get_provider,
 )
+from ..tools.bayleaf import BayleafAuthError
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 _AGENT_CLASSES = discover_agents()
@@ -167,6 +168,13 @@ for slug, AgentCls in _AGENT_CLASSES.items():
         except ValueError as exc:
             if str(exc) == "conversation_group_mismatch":
                 raise HTTPException(status_code=409, detail="conversation_group_mismatch") from exc
+            raise
+        except BayleafAuthError as exc:
+            if exc.status_code == 401 and exc.error == "token_expired":
+                raise HTTPException(
+                    status_code=401,
+                    detail={"error": "token_expired", "details": exc.details},
+                ) from exc
             raise
         safety = SafetyInfo(triage="non-urgent")
         return ChatResponse(

@@ -120,7 +120,6 @@ def test_extract_document_uuids_accepts_document_id_when_uuid():
             "org": "b272db0e-76df-4e13-94e9-2cb01c68978d",
             "doc_key": "lab.sop.hemato",
             "name": "POP Hemato",
-            "reference": "minio://bucket/path",
             "created_by": "ffafcb80-4191-43e6-aaa2-c1a197a49aa5",
         }
     )
@@ -135,7 +134,41 @@ def test_extract_document_uuids_rejects_document_id_when_not_uuid():
         {
             "id": "doc-123",
             "doc_key": "lab.sop.hemato",
-            "reference": "minio://bucket/path",
+        }
+    )
+
+    assert out == set()
+
+
+def test_extract_document_uuids_ignores_reference_uuid_segments():
+    service = _service(bayleaf=object())
+    document_uuid = "d616ccac-4f2c-4cc2-adcb-4c804f8a8d88"
+    version_uuid = "c38e1874-1237-430a-8997-dbf1f77e3727"
+
+    out = service._extract_document_uuids(
+        {
+            "id": document_uuid,
+            "doc_key": "lab.sop.hemato",
+            "reference": (
+                "minio://bayleaf-documents/org/b272db0e-76df-4e13-94e9-2cb01c68978d/"
+                f"documents/{document_uuid}/{version_uuid}/pop-hematologia.pdf"
+            ),
+        }
+    )
+
+    assert out == {document_uuid}
+
+
+def test_extract_document_uuids_ignores_reference_when_id_is_not_uuid():
+    service = _service(bayleaf=object())
+    document_uuid = "d616ccac-4f2c-4cc2-adcb-4c804f8a8d88"
+    version_uuid = "c38e1874-1237-430a-8997-dbf1f77e3727"
+
+    out = service._extract_document_uuids(
+        {
+            "id": "doc-123",
+            "doc_key": "lab.sop.hemato",
+            "reference": f"minio://bucket/documents/{document_uuid}/{version_uuid}/f.pdf",
         }
     )
 
