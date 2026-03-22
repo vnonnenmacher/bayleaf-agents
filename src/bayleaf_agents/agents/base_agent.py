@@ -826,7 +826,16 @@ class BaseAgent:
         )
         cited_documents = self._documents_from_citations(citations)
         retrieved_documents = self._documents_from_chunks(retrieved_chunks)
-        db.add(Message(conversation_id=conv.id, role=Role.assistant, content=restored_reply, redacted_content=reply))
+        db.add(
+            Message(
+                conversation_id=conv.id,
+                role=Role.assistant,
+                content=restored_reply,
+                redacted_content=reply,
+                cited_documents=cited_documents,
+                citations=citations,
+            )
+        )
         db.commit()
 
         log.info(

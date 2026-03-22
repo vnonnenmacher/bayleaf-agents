@@ -97,6 +97,8 @@ class Message(Base):
     tool_args: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     tool_result: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     retrieval_trace: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    cited_documents: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    citations: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")

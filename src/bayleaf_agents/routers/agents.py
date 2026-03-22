@@ -474,6 +474,8 @@ async def list_conversation_messages(
             content=msg.content,
             created_at=msg.created_at,
             tool_name=msg.tool_name,
+            cited_documents=msg.cited_documents or [],
+            citations=msg.citations or [],
         )
         for msg in rows
     ]

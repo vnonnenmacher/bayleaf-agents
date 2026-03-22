@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from bayleaf_agents.agents.base_agent import BaseAgent
 from bayleaf_agents.auth.deps import Principal
 from bayleaf_agents.llm.base import LLMProvider
-from bayleaf_agents.models import Base
+from bayleaf_agents.models import Base, Message, Role
 from bayleaf_agents.tools.bayleaf import BayleafClient
 
 
@@ -108,6 +108,24 @@ def test_chat_returns_cited_and_retrieved_documents():
     ]
     assert result["cited_documents"] == [{"name": "Clinical Guide", "uuid": "doc-1"}]
     assert result["citations"] == [
+        {
+            "id": "c1",
+            "document_uuid": "doc-1",
+            "document_name": "Clinical Guide",
+            "chunk_ref": "doc-1#0",
+            "evidence_text": "Hydration and rest are recommended in mild headache cases.",
+            "retrieval_score": 0.95,
+        }
+    ]
+    saved_assistant_message = (
+        db.query(Message)
+        .filter(Message.role == Role.assistant)
+        .order_by(Message.created_at.desc())
+        .first()
+    )
+    assert saved_assistant_message is not None
+    assert saved_assistant_message.cited_documents == [{"name": "Clinical Guide", "uuid": "doc-1"}]
+    assert saved_assistant_message.citations == [
         {
             "id": "c1",
             "document_uuid": "doc-1",

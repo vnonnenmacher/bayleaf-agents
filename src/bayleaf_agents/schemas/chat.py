@@ -73,6 +73,8 @@ class ConversationMessage(BaseModel):
     content: str
     created_at: datetime
     tool_name: Optional[str] = None
+    cited_documents: list[ResearchDocument] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
 
 
 class ConversationMessagesResponse(BaseModel):
