@@ -382,6 +382,27 @@ class BaseAgent:
         except Exception:
             return None
 
+    def _lab_retrieval_evidence_policy(self, group_context: Optional[Dict[str, Any]]) -> str:
+        if not isinstance(group_context, dict):
+            return ""
+        retrieval_context = group_context.get("retrieval_context")
+        if not isinstance(retrieval_context, dict):
+            return ""
+        chunks = retrieval_context.get("chunks")
+        if not isinstance(chunks, list) or not chunks:
+            return ""
+        doc_key = str(self.documents_doc_key or "").strip().lower()
+        if not doc_key.startswith("lab"):
+            return ""
+        return (
+            "\nEvidence policy:\n"
+            "- Retrieved chunks in Conversation group context are internal laboratory SOP/compliance evidence.\n"
+            "- For procedure/compliance questions, prioritize these chunks over general knowledge.\n"
+            "- If a chunk directly answers the question, respond directly from that evidence and keep it concise.\n"
+            "- Do not invent external tube orders or procedural steps not present in retrieved evidence.\n"
+            "- If evidence is insufficient, state what is missing before giving a generic answer."
+        )
+
     def _chunk_ref(self, chunk: Dict[str, Any], fallback_index: int) -> str:
         doc_uuid = str(chunk.get("document_uuid") or "").strip() or "unknown-doc"
         chunk_index_raw = chunk.get("chunk_index")
@@ -653,6 +674,7 @@ class BaseAgent:
                 f"{json.dumps(group_context, ensure_ascii=False)}\n"
                 "Treat this conversation as scoped to that project/event context."
             )
+            system_prompt += self._lab_retrieval_evidence_policy(group_context)
         if normalized_forced_ids:
             system_prompt += (
                 "\nDocument retrieval requirement: when using query_documents, always use only these document_uuids: "

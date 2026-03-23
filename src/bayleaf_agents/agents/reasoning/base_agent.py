@@ -135,6 +135,64 @@ class ReasoningBaseAgent(BaseAgent):
                 chunk_tokens.update(self._tokenize(str(chunk.get("text_chunk") or "")))
         return any(token not in chunk_tokens for token in user_shift_tokens)
 
+    def _prefetch_chunk_key(self, chunk: Dict[str, Any], fallback_index: int) -> str:
+        doc_uuid = str(chunk.get("document_uuid") or "").strip() or "unknown-doc"
+        raw_index = chunk.get("chunk_index")
+        if isinstance(raw_index, int):
+            chunk_index = raw_index
+        else:
+            try:
+                chunk_index = int(str(raw_index))
+            except Exception:
+                chunk_index = fallback_index
+        return f"{doc_uuid}#{chunk_index}"
+
+    def _merge_prefetch_results(self, *results: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        merged_chunks: List[Dict[str, Any]] = []
+        seen_keys: set[str] = set()
+        query = ""
+        model_used = ""
+        top_k = 0
+        traces: List[Dict[str, Any]] = []
+
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            if not query:
+                query = str(result.get("query") or "")
+            if not model_used:
+                model_used = str(result.get("model_used") or "")
+            try:
+                top_k += int(result.get("top_k") or 0)
+            except Exception:
+                pass
+            trace = result.get("trace")
+            if isinstance(trace, dict):
+                traces.append(trace)
+            chunks = result.get("chunks")
+            if not isinstance(chunks, list):
+                continue
+            for idx, chunk in enumerate(chunks):
+                if not isinstance(chunk, dict):
+                    continue
+                key = self._prefetch_chunk_key(chunk, fallback_index=idx)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                merged_chunks.append(chunk)
+
+        return {
+            "query": query,
+            "top_k": top_k,
+            "model_used": model_used,
+            "chunks": merged_chunks,
+            "trace": {
+                "strategy": "dual_prefetch" if len(traces) > 1 else "single_prefetch",
+                "source_traces": traces,
+                "returned_chunks": len(merged_chunks),
+            },
+        }
+
     def chat(
         self,
         db: Session,
@@ -177,6 +235,7 @@ class ReasoningBaseAgent(BaseAgent):
             conv_id,
             (latest_tool_msg.created_at if latest_tool_msg else None),
         )
+        prefetch_top_k = 5
         should_retrieve = False
         prefetch_result: Optional[Dict[str, Any]] = None
         routing_mode = "no_decider"
@@ -260,26 +319,50 @@ class ReasoningBaseAgent(BaseAgent):
                     pass
 
             if should_retrieve and self.documents_tools:
-                prefetch_result = self.documents_tools.query_documents(
+                general_top_k = 10 if candidate_ids else 5
+                prefetch_top_k = general_top_k
+                general_result = self.documents_tools.query_documents(
                     query=user_message,
-                    top_k=5,
-                    document_uuids=candidate_ids or None,
+                    top_k=general_top_k,
+                    document_uuids=None,
                     doc_key=self.documents_doc_key,
                     principal=principal,
                 )
+                focused_result: Optional[Dict[str, Any]] = None
+                if candidate_ids:
+                    focused_top_k = 10
+                    prefetch_top_k = general_top_k + focused_top_k
+                    focused_result = self.documents_tools.query_documents(
+                        query=user_message,
+                        top_k=focused_top_k,
+                        document_uuids=candidate_ids,
+                        doc_key=None,
+                        principal=principal,
+                    )
+                prefetch_result = self._merge_prefetch_results(focused_result, general_result)
                 route_trace["prefetch"] = {
                     "requested_query": user_message,
+                    "prefetch_strategy": ("dual_general_plus_candidates" if candidate_ids else "single_general"),
+                    "general_requested_top_k": general_top_k,
+                    "focused_requested_top_k": (10 if candidate_ids else None),
                     "candidate_document_ids": candidate_ids,
                     "returned_chunks": len((prefetch_result or {}).get("chunks") or []),
                     "trace": (prefetch_result or {}).get("trace"),
+                    "general_trace": (general_result or {}).get("trace"),
+                    "focused_trace": (focused_result or {}).get("trace") if isinstance(focused_result, dict) else None,
                 }
                 try:
                     self.log.info(
                         "retrieval_prefetch_done",
                         requested_query=user_message,
+                        prefetch_strategy=("dual_general_plus_candidates" if candidate_ids else "single_general"),
+                        general_requested_top_k=general_top_k,
+                        focused_requested_top_k=(10 if candidate_ids else None),
                         candidate_document_ids=candidate_ids,
                         returned_chunks=len((prefetch_result or {}).get("chunks") or []),
                         trace=(prefetch_result or {}).get("trace"),
+                        general_trace=(general_result or {}).get("trace"),
+                        focused_trace=(focused_result or {}).get("trace") if isinstance(focused_result, dict) else None,
                         routing_mode=routing_mode,
                     )
                 except Exception:
@@ -296,9 +379,12 @@ class ReasoningBaseAgent(BaseAgent):
                         "name": c.get("name"),
                         "chunk_index": c.get("chunk_index"),
                         "score": c.get("score"),
-                        "text_chunk": str(c.get("text_chunk") or "")[:700],
+                        # Keep full retrieved chunk text in group context.
+                        # Indexed chunks are ~1000 chars, and truncating to 700 can drop
+                        # decisive SOP lines that appear near the end of the chunk.
+                        "text_chunk": str(c.get("text_chunk") or "")[:1400],
                     }
-                    for c in chunks[:5]
+                    for c in chunks[:prefetch_top_k]
                     if isinstance(c, dict)
                 ],
                 "trace": (prefetch_result.get("trace") if isinstance(prefetch_result, dict) else None),

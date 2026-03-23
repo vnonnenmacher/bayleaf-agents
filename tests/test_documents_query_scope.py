@@ -23,7 +23,7 @@ class StubDocumentsService:
         }
 
 
-def test_doc_key_mode_uses_only_scoped_uuids():
+def test_doc_key_mode_without_explicit_filters_uses_scoped_uuids():
     service = StubDocumentsService(scoped_uuids=["doc-1"])
     tools = DocumentsToolset(service)
 
@@ -31,8 +31,6 @@ def test_doc_key_mode_uses_only_scoped_uuids():
         query="hematologia",
         doc_key="lab",
         principal=None,
-        document_uuid="doc-out-of-scope",
-        document_uuids=["doc-out-of-scope"],
     )
 
     assert len(service.query_calls) == 1
@@ -50,6 +48,72 @@ def test_doc_key_mode_returns_empty_when_scope_is_empty():
     assert out["chunks"] == []
     assert out["trace"]["scope_mode"] == "doc_key_strict"
     assert out["trace"]["scope_reason"] == "doc_key_no_documents"
+
+
+def test_doc_key_mode_keeps_document_uuid_when_in_scope():
+    service = StubDocumentsService(scoped_uuids=["doc-1", "doc-2"])
+    tools = DocumentsToolset(service)
+
+    tools.query_documents(
+        query="hematologia",
+        doc_key="lab",
+        principal=None,
+        document_uuid="doc-2",
+    )
+
+    assert len(service.query_calls) == 1
+    assert service.query_calls[0]["document_uuid"] == "doc-2"
+    assert service.query_calls[0]["document_uuids"] is None
+
+
+def test_doc_key_mode_filters_document_uuids_to_scope():
+    service = StubDocumentsService(scoped_uuids=["doc-1", "doc-3"])
+    tools = DocumentsToolset(service)
+
+    tools.query_documents(
+        query="hematologia",
+        doc_key="lab",
+        principal=None,
+        document_uuids=["doc-x", "doc-3", "doc-1", "doc-1"],
+    )
+
+    assert len(service.query_calls) == 1
+    assert service.query_calls[0]["document_uuid"] is None
+    assert service.query_calls[0]["document_uuids"] == ["doc-3", "doc-1"]
+
+
+def test_doc_key_mode_returns_empty_for_out_of_scope_document_uuid():
+    service = StubDocumentsService(scoped_uuids=["doc-1"])
+    tools = DocumentsToolset(service)
+
+    out = tools.query_documents(
+        query="hematologia",
+        doc_key="lab",
+        principal=None,
+        document_uuid="doc-x",
+    )
+
+    assert len(service.query_calls) == 0
+    assert out["chunks"] == []
+    assert out["trace"]["scope_mode"] == "doc_key_strict"
+    assert out["trace"]["scope_reason"] == "doc_key_document_uuid_out_of_scope"
+
+
+def test_doc_key_mode_returns_empty_for_out_of_scope_document_uuids():
+    service = StubDocumentsService(scoped_uuids=["doc-1"])
+    tools = DocumentsToolset(service)
+
+    out = tools.query_documents(
+        query="hematologia",
+        doc_key="lab",
+        principal=None,
+        document_uuids=["doc-x", "doc-y"],
+    )
+
+    assert len(service.query_calls) == 0
+    assert out["chunks"] == []
+    assert out["trace"]["scope_mode"] == "doc_key_strict"
+    assert out["trace"]["scope_reason"] == "doc_key_document_uuids_out_of_scope"
 
 
 def test_no_doc_key_keeps_original_filters():

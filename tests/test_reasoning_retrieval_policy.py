@@ -32,6 +32,16 @@ class DeciderNoRetrievalProvider(LLMProvider):
         }
 
 
+class DeciderNeedsRetrievalProvider(LLMProvider):
+    name = "decider-needs-retrieval"
+
+    def chat(self, messages, tools):
+        return {
+            "reply": '{"needs_retrieval": true, "candidate_document_ids": ["doc-1"], "reason": "hematology", "confidence": 0.9}',  # noqa: E501
+            "tool_calls": [],
+        }
+
+
 class StubDocumentsTools:
     def __init__(self):
         self.calls = []
@@ -163,3 +173,36 @@ def test_reuses_recent_evidence_without_prefetch():
     )
 
     assert len(docs.calls) == 0
+
+
+def test_prefetch_uses_top_k_10_when_decider_returns_candidates():
+    db = _session()
+    docs = StubDocumentsTools()
+    agent = TestReasoningAgent(
+        provider=MainProvider(),
+        decider_provider=DeciderNeedsRetrievalProvider(),
+        documents_tools=docs,
+    )
+
+    agent.chat(
+        db=db,
+        channel="bayleaf_app",
+        user_message="Como classificar RDW de 17,5?",
+        external_conversation_id="conv-3",
+        principal=_principal(),
+        lang="pt-BR",
+        agent_slug="labcopilot",
+    )
+
+    assert len(docs.calls) == 2
+
+    general_call = docs.calls[0]
+    focused_call = docs.calls[1]
+
+    assert general_call["top_k"] == 10
+    assert general_call["doc_key"] == "lab"
+    assert general_call["document_uuids"] is None
+
+    assert focused_call["top_k"] == 10
+    assert focused_call["doc_key"] is None
+    assert focused_call["document_uuids"] == ["doc-1"]

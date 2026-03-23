@@ -13,6 +13,33 @@ class DocumentsToolset:
         self.documents_service = documents_service
         self.log = structlog.get_logger("documents_tools")
 
+    def _empty_scoped_result(
+        self,
+        *,
+        query: str,
+        top_k: int,
+        model_used: Optional[str],
+        reason: str,
+    ) -> Dict[str, Any]:
+        resolved_model = str(model_used or getattr(self.documents_service, "default_model", ""))
+        return {
+            "query": query,
+            "top_k": top_k,
+            "model_used": resolved_model,
+            "chunks": [],
+            "trace": {
+                "trace_id": f"retr_{uuid.uuid4().hex[:12]}",
+                "retrieved_at": datetime.now(timezone.utc).isoformat(),
+                "collection": None,
+                "model_used": resolved_model,
+                "query_filter": {"should": []},
+                "requested_top_k": top_k,
+                "returned_chunks": 0,
+                "scope_mode": "doc_key_strict",
+                "scope_reason": reason,
+            },
+        }
+
     def query_documents(
         self,
         *,
@@ -39,30 +66,54 @@ class DocumentsToolset:
                 scoped_uuids=scoped_uuids[:20],
             )
             if not scoped_uuids:
-                resolved_model = str(model_used or getattr(self.documents_service, "default_model", ""))
-                return {
-                    "query": query,
-                    "top_k": top_k,
-                    "model_used": resolved_model,
-                    "chunks": [],
-                    "trace": {
-                        "trace_id": f"retr_{uuid.uuid4().hex[:12]}",
-                        "retrieved_at": datetime.now(timezone.utc).isoformat(),
-                        "collection": None,
-                        "model_used": resolved_model,
-                        "query_filter": {"should": []},
-                        "requested_top_k": top_k,
-                        "returned_chunks": 0,
-                        "scope_mode": "doc_key_strict",
-                        "scope_reason": "doc_key_no_documents",
-                    },
-                }
+                return self._empty_scoped_result(
+                    query=query,
+                    top_k=top_k,
+                    model_used=model_used,
+                    reason="doc_key_no_documents",
+                )
+
+            scoped_set = {str(doc_id).strip() for doc_id in scoped_uuids if str(doc_id).strip()}
+            effective_document_uuid: Optional[str] = None
+            effective_document_uuids: Optional[list[str]] = None
+
+            if document_uuid:
+                requested_uuid = str(document_uuid).strip()
+                if requested_uuid not in scoped_set:
+                    return self._empty_scoped_result(
+                        query=query,
+                        top_k=top_k,
+                        model_used=model_used,
+                        reason="doc_key_document_uuid_out_of_scope",
+                    )
+                effective_document_uuid = requested_uuid
+            elif document_uuids:
+                requested_uuids = [str(doc_id).strip() for doc_id in document_uuids if str(doc_id).strip()]
+                filtered = [doc_id for doc_id in requested_uuids if doc_id in scoped_set]
+                if not filtered:
+                    return self._empty_scoped_result(
+                        query=query,
+                        top_k=top_k,
+                        model_used=model_used,
+                        reason="doc_key_document_uuids_out_of_scope",
+                    )
+                # Keep order from caller while removing duplicates.
+                seen: set[str] = set()
+                effective_document_uuids = []
+                for doc_id in filtered:
+                    if doc_id in seen:
+                        continue
+                    seen.add(doc_id)
+                    effective_document_uuids.append(doc_id)
+            else:
+                effective_document_uuids = [doc_id for doc_id in scoped_uuids if str(doc_id).strip()]
+
             return self.documents_service.query_documents(
                 query=query,
                 top_k=top_k,
                 model_used=model_used,
-                document_uuid=None,
-                document_uuids=scoped_uuids,
+                document_uuid=effective_document_uuid,
+                document_uuids=effective_document_uuids,
                 source_type=source_type,
                 is_bayleaf=is_bayleaf,
             )
