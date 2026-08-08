@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from bayleaf_agents.agents.reasoning.base_agent import ReasoningBaseAgent
+from bayleaf_agents.agents.labcopilot_agent import LabcopilotAgent
 from bayleaf_agents.auth.deps import Principal
 from bayleaf_agents.llm.base import LLMProvider
 from bayleaf_agents.models import Base, Message, Role
@@ -18,7 +18,12 @@ def _session():
 class MainProvider(LLMProvider):
     name = "main-provider"
 
+    def __init__(self, events=None):
+        self.events = events
+
     def chat(self, messages, tools):
+        if self.events is not None:
+            self.events.append("main_provider")
         return {"reply": "ok", "tool_calls": []}
 
 
@@ -35,7 +40,12 @@ class DeciderNoRetrievalProvider(LLMProvider):
 class DeciderNeedsRetrievalProvider(LLMProvider):
     name = "decider-needs-retrieval"
 
+    def __init__(self, events=None):
+        self.events = events
+
     def chat(self, messages, tools):
+        if self.events is not None:
+            self.events.append("decider")
         return {
             "reply": '{"needs_retrieval": true, "candidate_document_ids": ["doc-1"], "reason": "hematology", "confidence": 0.9}',  # noqa: E501
             "tool_calls": [],
@@ -43,8 +53,9 @@ class DeciderNeedsRetrievalProvider(LLMProvider):
 
 
 class StubDocumentsTools:
-    def __init__(self):
+    def __init__(self, events=None):
         self.calls = []
+        self.events = events
 
     def documents_available(self, **kwargs):
         return [
@@ -61,6 +72,9 @@ class StubDocumentsTools:
 
     def query_documents(self, **kwargs):
         self.calls.append(kwargs)
+        if self.events is not None:
+            event = "focused_prefetch" if kwargs.get("document_uuids") else "general_prefetch"
+            self.events.append(event)
         return {
             "query": kwargs.get("query"),
             "chunks": [
@@ -73,21 +87,6 @@ class StubDocumentsTools:
             ],
             "trace": {"trace_id": "retr_test_1"},
         }
-
-
-class TestReasoningAgent(ReasoningBaseAgent):
-    def __init__(self, *, provider, decider_provider, documents_tools):
-        super().__init__(
-            name="test-reasoning-agent",
-            objective="test objective",
-            provider=provider,
-            bayleaf=BayleafClient("http://example.test"),
-            documents_tools=documents_tools,
-            use_phi_filter=False,
-            enabled_tool_names=["query_documents"],
-            documents_doc_key="lab",
-        )
-        self.decider_provider = decider_provider
 
 
 def _principal():
@@ -104,7 +103,8 @@ def _principal():
 def test_forces_prefetch_when_decider_skips_and_no_recent_evidence():
     db = _session()
     docs = StubDocumentsTools()
-    agent = TestReasoningAgent(
+    agent = LabcopilotAgent(
+        bayleaf=BayleafClient("http://example.test"),
         provider=MainProvider(),
         decider_provider=DeciderNoRetrievalProvider(),
         documents_tools=docs,
@@ -127,7 +127,8 @@ def test_forces_prefetch_when_decider_skips_and_no_recent_evidence():
 def test_reuses_recent_evidence_without_prefetch():
     db = _session()
     docs = StubDocumentsTools()
-    agent = TestReasoningAgent(
+    agent = LabcopilotAgent(
+        bayleaf=BayleafClient("http://example.test"),
         provider=MainProvider(),
         decider_provider=DeciderNoRetrievalProvider(),
         documents_tools=docs,
@@ -177,10 +178,12 @@ def test_reuses_recent_evidence_without_prefetch():
 
 def test_prefetch_uses_top_k_10_when_decider_returns_candidates():
     db = _session()
-    docs = StubDocumentsTools()
-    agent = TestReasoningAgent(
-        provider=MainProvider(),
-        decider_provider=DeciderNeedsRetrievalProvider(),
+    events = []
+    docs = StubDocumentsTools(events=events)
+    agent = LabcopilotAgent(
+        bayleaf=BayleafClient("http://example.test"),
+        provider=MainProvider(events=events),
+        decider_provider=DeciderNeedsRetrievalProvider(events=events),
         documents_tools=docs,
     )
 
@@ -206,3 +209,10 @@ def test_prefetch_uses_top_k_10_when_decider_returns_candidates():
     assert focused_call["top_k"] == 10
     assert focused_call["doc_key"] is None
     assert focused_call["document_uuids"] == ["doc-1"]
+
+    assert events[:4] == [
+        "decider",
+        "general_prefetch",
+        "focused_prefetch",
+        "main_provider",
+    ]
