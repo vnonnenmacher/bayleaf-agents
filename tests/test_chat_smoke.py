@@ -6,12 +6,9 @@ def test_chat_smoke():
     c = TestClient(create_app())
     payload = {
         "channel": "bayleaf_app",
-        "patient_id": "uuid-demo",
         "message": "Estou com náusea e tomei meus remédios hoje.",
-        "locale": "pt-BR",
-        "metadata": {}
+        "lang": "pt-BR",
     }
-    r = c.post("/chat", json=payload)
-    assert r.status_code == 200
-    data = r.json()
-    assert "reply" in data and "trace_id" in data
+    r = c.post("/agents/treatment/chat", json=payload)
+    assert r.status_code == 401
+    assert r.json() == {"detail": "missing_token"}

@@ -16,7 +16,7 @@ Provider-agnostic (OpenAI / mock / others), with Postgres for conversation histo
 
 ```bash
 cp .env.example .env   # set your envs (OPTIONAL for mock)
-docker compose up --build
+docker compose --profile dev up --build
 ```
 
 This also brings up a Presidio analyzer sidecar (spaCy-based) listening on `http://presidio-analyzer:3000/analyze` and exposed locally on `http://localhost:8001/analyze`. The agent calls it via `PHI_FILTER_URL`.
@@ -140,6 +140,24 @@ pytest -q
   alembic revision -m "desc"
   alembic upgrade head
   ```
+
+## Production deployment
+
+Pushes to `main` run the test suite and then deploy to the VPS over SSH. The
+production `.env` stays at `/home/bayleaf/bayleaf-agents/.env` on the server.
+Configure these GitHub Actions secrets:
+
+* `VPS_HOST`
+* `VPS_USER`
+* `VPS_SSH_KEY`
+* `VPS_PORT` (optional; defaults to `22`)
+
+The production service binds to `127.0.0.1:8080` for the host nginx upstream.
+To start it manually:
+
+```bash
+docker compose --profile prod up -d --build --remove-orphans
+```
 
 ## Switch LLM provider
 

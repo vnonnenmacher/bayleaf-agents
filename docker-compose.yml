@@ -6,12 +6,14 @@ services:
       POSTGRES_PASSWORD: bayleaf
       POSTGRES_DB: bayleaf_agents
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
-  agents:
-    build: .
+  agents-dev:
+    build:
+      context: .
+      target: test
     depends_on:
       - db
       - presidio-analyzer
@@ -34,7 +36,32 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - .:/app 
+      - .:/app
+    profiles:
+      - dev
+
+  agents:
+    build:
+      context: .
+      target: runtime
+    depends_on:
+      - db
+      - presidio-analyzer
+      - qdrant
+    env_file:
+      - .env
+    environment:
+      APP_ENV: prod
+      HOST: 0.0.0.0
+      PORT: 8080
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-bayleaf}:${POSTGRES_PASSWORD:-bayleaf}@db:5432/${POSTGRES_DB:-bayleaf_agents}
+      PHI_FILTER_URL: http://presidio-analyzer:3000/analyze
+      QDRANT_URL: http://qdrant:6333
+    ports:
+      - "127.0.0.1:${AGENTS_PORT:-8080}:8080"
+    restart: unless-stopped
+    profiles:
+      - prod
 
   presidio-analyzer:
     image: mcr.microsoft.com/presidio-analyzer:latest
@@ -45,14 +72,16 @@ services:
       ANALYZER_LOG_LEVEL: DEBUG
       PYTHONUNBUFFERED: "1"
     ports:
-      - "8001:3000"
+      - "127.0.0.1:8001:3000"
+    restart: unless-stopped
 
   qdrant:
     image: qdrant/qdrant:latest
     ports:
-      - "6333:6333"
+      - "127.0.0.1:6333:6333"
     volumes:
       - qdrant-data:/qdrant/storage
+    restart: unless-stopped
 
 
 volumes:
