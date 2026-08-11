@@ -16,7 +16,7 @@ Provider-agnostic (OpenAI / mock / others), with Postgres for conversation histo
 
 ```bash
 cp .env.example .env   # set your envs (OPTIONAL for mock)
-docker compose --profile dev up --build
+docker compose --profile dev up --build agents-dev
 ```
 
 This also brings up a Presidio analyzer sidecar (spaCy-based) listening on `http://presidio-analyzer:3000/analyze` and exposed locally on `http://localhost:8001/analyze`. The agent calls it via `PHI_FILTER_URL`.
@@ -39,47 +39,60 @@ curl -sS http://localhost:8080/health | jq
 ### Chat (stateless)
 
 ```bash
-curl -sS -X POST http://localhost:8080/chat \
+TOKEN="<bearer-token-with-user_id-claim>"
+
+curl -sS -X POST http://localhost:8080/agents/treatment/chat \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
     "channel":"bayleaf_app",
-    "patient_id":"uuid-demo",
     "message":"Tenho dor de cabeça desde ontem.",
-    "locale":"pt-BR",
-    "metadata":{}
+    "lang":"pt-BR"
   }' | jq
 ```
 
 ### Chat with conversation memory
 
 ```bash
-curl -sS -X POST http://localhost:8080/chat \
+TOKEN="<bearer-token-with-user_id-claim>"
+
+curl -sS -X POST http://localhost:8080/agents/labcopilot/chat \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
     "channel":"bayleaf_app",
-    "patient_id":"uuid-demo",
     "conversation_id":"demo-1",
-    "message":"Sim, tenho náusea e sensibilidade à luz."
+    "message":"Sim, tenho náusea e sensibilidade à luz.",
+    "lang":"pt-BR"
   }' | jq
 ```
 
 ## API
 
 * `GET /health` → `{ status, env, provider }`
-* `POST /agents/documents/index` → index by `document_uuid` or uploaded `file`
+* `POST /agents/{agent_slug}/chat` → authenticated chat per agent (for example, `treatment`, `appointment`, `labcopilot`)
+* `POST /agents/documents/index` → index by `document_uuid`
+* `POST /agents/documents/index/upload` → index uploaded file (`multipart/form-data`)
 * `GET /agents/documents-available` → list indexed documents from Qdrant
 * `GET /agents/documents/{uuid}` → indexed document status from Qdrant
+* `POST /agents/documents/query` → semantic chunk retrieval
 * `POST /agents/documents/{uuid}/reindex` → reindex document in Qdrant
-* `POST /chat` → body:
+* `GET /agents/conversations` and `GET /agents/conversations/{conversation_id}/messages` → conversation history
+* `POST|PATCH|PUT|GET /agents/conversation-groups` → conversation group lifecycle
+* `PUT|GET /agents/user-metadata` → user metadata store
+
+All `/agents/*` endpoints require `Authorization: Bearer <token>`.
+
+Chat body:
 
   ```json
   {
     "channel": "bayleaf_app | whatsapp | partner",
-    "patient_id": "string",
     "message": "string",
-    "locale": "pt-BR",
-    "metadata": {},
-    "conversation_id": "optional string"
+    "conversation_id": "optional string",
+    "group_id": "optional string",
+    "document_uuids": ["optional", "list"],
+    "lang": "optional locale, e.g. pt-BR"
   }
   ```
 
@@ -125,6 +138,12 @@ uvicorn bayleaf_agents.app:create_app --factory --reload --port 8080
 ```
 
 ### Tests
+
+```bash
+docker compose --profile dev run --rm agents-dev pytest
+```
+
+or locally:
 
 ```bash
 pytest -q
