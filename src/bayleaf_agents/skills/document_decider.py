@@ -5,10 +5,10 @@ from typing import Any, Dict, List, Optional
 import structlog
 from sqlalchemy.orm import Session
 
-from ...auth.deps import Principal
-from ...llm.base import LLMProvider
-from ...models import Message
-from ...tools.documents import DocumentsToolset
+from ..auth.deps import Principal
+from ..llm.base import LLMProvider
+from ..models import Message
+from ..tools.documents import DocumentsToolset
 
 
 class DocumentDeciderAgent:
@@ -134,3 +134,4 @@ class DocumentDeciderAgent:
         }
         self.log.info("document_decider_done", **decision)
         return decision
+

@@ -1,11 +1,14 @@
+import re
+from typing import Dict, List
+
 from ..llm.base import LLMProvider
 from ..services.phi_filter import PHIFilterClient
 from ..tools.bayleaf import BayleafClient
 from ..tools.documents import DocumentsToolset
-from .reasoning import ReasoningBaseAgent
+from .base_agent import BaseAgent
 
 
-class LabcopilotAgent(ReasoningBaseAgent):
+class LabcopilotAgent(BaseAgent):
     def __init__(
         self,
         provider: LLMProvider,
@@ -328,5 +331,38 @@ class LabcopilotAgent(ReasoningBaseAgent):
             use_phi_filter=False,
             enabled_tool_names=["query_documents"],
             documents_doc_key="lab",
+            decider_provider=decider_provider,
         )
-        self.decider_provider = decider_provider or provider
+
+    def _is_high_risk_question(self, user_message: str) -> bool:
+        text = (user_message or "").lower()
+        patterns = [
+            r"\bvalor(?:es)?\b",
+            r"\bfaixa(?:s)?\b",
+            r"\brefer[êe]ncia\b",
+            r"\blimite(?:s)?\b",
+            r"\bnormal(?:es)?\b",
+            r"\bprocedimento\b",
+            r"\bcomo (?:fazer|coletar|preparar)\b",
+            r"\bcut[- ]?off\b",
+        ]
+        return any(re.search(p, text) for p in patterns)
+
+    def _has_query_shift(self, *, user_message: str, chunks: List[Dict[str, object]]) -> bool:
+        # If user adds qualifiers/constraints that are absent in previously retrieved chunks,
+        # force retrieval even with generic token overlap.
+        shift_lexicon = {
+            "gestante", "gravida", "criança", "crianca", "pediatrico", "idoso",
+            "jejum", "posprandial", "método", "metodo", "técnica", "tecnica",
+            "ldl", "hdl", "vldl", "triglicerides", "triglicérides", "nao-hdl",
+            "diabet", "renal", "hepatic", "diretriz", "guideline",
+        }
+        user_tokens = set(self._tokenize(user_message))
+        user_shift_tokens = {t for t in user_tokens if t in shift_lexicon}
+        if not user_shift_tokens:
+            return False
+        chunk_tokens: set[str] = set()
+        for chunk in chunks:
+            if isinstance(chunk, dict):
+                chunk_tokens.update(self._tokenize(str(chunk.get("text_chunk") or "")))
+        return any(token not in chunk_tokens for token in user_shift_tokens)
