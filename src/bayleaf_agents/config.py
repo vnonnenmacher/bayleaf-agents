@@ -90,7 +90,7 @@ class Settings(BaseModel):
         if not plain_hosts:
             return None
 
-        return rf"^https?://({'|'.join(plain_hosts)})(:\\d+)?$"
+        return rf"^https?://({'|'.join(plain_hosts)})(:\d+)?$"
 
 
 settings = Settings()
