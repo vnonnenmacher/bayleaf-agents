@@ -1,4 +1,5 @@
 import os
+import re
 from pydantic import BaseModel, Field
 
 
@@ -7,6 +8,7 @@ class Settings(BaseModel):
     HOST: str = Field(default=os.getenv("HOST", "0.0.0.0"))
     PORT: int = Field(default=int(os.getenv("PORT", "8080")))
     LOG_LEVEL: str = Field(default=os.getenv("LOG_LEVEL", "DEBUG"))
+    ALLOWED_HOSTS: str = Field(default=os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,labcopilot.nonnenmacher.tech"))
 
     # LLM
     LLM_PROVIDER: str = Field(default=os.getenv("LLM_PROVIDER", "mock"))  # mock | openai
@@ -48,6 +50,47 @@ class Settings(BaseModel):
     QDRANT_TIMEOUT: int = Field(default=int(os.getenv("QDRANT_TIMEOUT", "20")))
     EMBEDDING_MODELS: str = Field(default=os.getenv("EMBEDDING_MODELS", "intfloat/multilingual-e5-base"))
     EMBEDDING_DEFAULT_MODEL: str = Field(default=os.getenv("EMBEDDING_DEFAULT_MODEL", ""))
+
+    def cors_allow_origins(self) -> list[str]:
+        hosts = [h.strip() for h in self.ALLOWED_HOSTS.split(",") if h.strip()]
+        if not hosts:
+            return []
+        if "*" in hosts:
+            return ["*"]
+
+        origins: list[str] = []
+        for host in hosts:
+            normalized = host.rstrip("/")
+            if normalized.startswith("http://") or normalized.startswith("https://"):
+                origins.append(normalized)
+            elif ":" in normalized:
+                origins.append(f"http://{normalized}")
+                origins.append(f"https://{normalized}")
+            else:
+                origins.append(f"http://{normalized}")
+                origins.append(f"https://{normalized}")
+
+        # Preserve order while removing duplicates.
+        return list(dict.fromkeys(origins))
+
+    def cors_allow_origin_regex(self) -> str | None:
+        hosts = [h.strip() for h in self.ALLOWED_HOSTS.split(",") if h.strip()]
+        if not hosts or "*" in hosts:
+            return None
+
+        plain_hosts: list[str] = []
+        for host in hosts:
+            normalized = host.rstrip("/")
+            if normalized.startswith("http://") or normalized.startswith("https://"):
+                continue
+            if ":" in normalized:
+                continue
+            plain_hosts.append(re.escape(normalized))
+
+        if not plain_hosts:
+            return None
+
+        return rf"^https?://({'|'.join(plain_hosts)})(:\\d+)?$"
 
 
 settings = Settings()

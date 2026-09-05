@@ -110,6 +110,7 @@ Environment variables (see `.env.example`):
 APP_ENV=dev
 HOST=0.0.0.0
 PORT=8080
+ALLOWED_HOSTS=localhost,127.0.0.1,labcopilot.nonnenmacher.tech
 LLM_PROVIDER=mock          # mock | openai
 OPENAI_API_KEY=            # if LLM_PROVIDER=openai
 OPENAI_MODEL=gpt-4o
