@@ -1,9 +1,9 @@
 # src/bayleaf_agents/agents/base_agent.py
 import uuid, time, structlog, json, re
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy.orm import Session
-from ..models import AgentRequest, AgentRequestState, Conversation, Message, Role, PHIEntity
+from ..models import Conversation, Message, Role, PHIEntity
 from ..llm.base import LLMProvider
 from ..tools.bayleaf import BayleafClient, tool_schemas
 from ..tools.documents import DocumentsToolset, query_tool_schemas
@@ -39,7 +39,6 @@ class BaseAgent:
         enabled_tool_names: Optional[List[str]] = None,
         documents_doc_key: Optional[str] = None,
         decider_provider: Optional[LLMProvider] = None,
-        request_scheduler: Optional[Callable[[str, Dict[str, Any]], str]] = None,
     ):
         self.log = structlog.get_logger("agent")
         self.name = name
@@ -53,7 +52,6 @@ class BaseAgent:
         self.enabled_tool_names = set(enabled_tool_names) if enabled_tool_names is not None else None
         self.documents_doc_key = documents_doc_key
         self.decider_provider = decider_provider or provider
-        self.request_scheduler = request_scheduler
 
     def _tool_enabled(self, name: str) -> bool:
         if self.enabled_tool_names is None:
@@ -87,11 +85,10 @@ class BaseAgent:
         except Exception:
             return {}
 
-    def _save_state(self, db: Session, conv_id: str, state: Dict[str, Any], *, agent_request_id: Optional[str] = None):
+    def _save_state(self, db: Session, conv_id: str, state: Dict[str, Any]):
         db.add(
             Message(
                 conversation_id=conv_id,
-                agent_request_id=agent_request_id,
                 role=Role.assistant,
                 content=json.dumps(state, ensure_ascii=False),
                 redacted_content=json.dumps(state, ensure_ascii=False),
@@ -161,15 +158,7 @@ class BaseAgent:
             return "New conversation"
         return " ".join(words[:max_words])[:120]
 
-    def _load_history(
-        self,
-        db: Session,
-        conv_id: str,
-        *,
-        include_tools: bool = False,
-        lang: str = "en",
-        exclude_message_id: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+    def _load_history(self, db: Session, conv_id: str, *, include_tools: bool = False, lang: str = "en") -> List[Dict[str, Any]]:
         q = (
             db.query(Message)
             .filter(Message.conversation_id == conv_id)
@@ -178,8 +167,6 @@ class BaseAgent:
         )
         msgs: List[Dict[str, Any]] = []
         for m in q.all():
-            if exclude_message_id and m.id == exclude_message_id:
-                continue
             content = m.redacted_content or self._redact_and_store(db, m, lang=lang)
             if m.role == Role.tool:
                 if include_tools:
@@ -768,6 +755,7 @@ class BaseAgent:
             return self.objective.get(lang, self.objective.get("en-US", ""))
         return str(self.objective)
 
+    # --- Main chat loop (no IDs) ---
     def chat(
         self,
         db: Session,
@@ -783,85 +771,6 @@ class BaseAgent:
         group_id: Optional[str] = None,
         group_context: Optional[Dict[str, Any]] = None,
         forced_document_ids: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        from ..services.agent_requests import enqueue_agent_request, principal_to_payload, serialize_agent_request
-
-        conv = self._get_or_create_conversation(
-            db,
-            external_conversation_id,
-            principal.user_id,
-            channel,
-            agent_slug=agent_slug,
-            group_id=group_id,
-            initial_name=self._conversation_title_from_first_message(user_message),
-        )
-
-        active = (
-            db.query(AgentRequest)
-            .filter(
-                AgentRequest.conversation_id == conv.id,
-                AgentRequest.state.in_([AgentRequestState.waiting, AgentRequestState.processing]),
-            )
-            .first()
-        )
-        if active:
-            raise ValueError("active_request_exists")
-
-        request = AgentRequest(
-            conversation_id=conv.id,
-            user_id=principal.user_id,
-            agent_slug=agent_slug or "",
-            channel=channel,
-            state=AgentRequestState.waiting,
-            user_message=user_message,
-            lang=lang,
-            group_context=group_context or None,
-            forced_document_ids=forced_document_ids or None,
-        )
-        db.add(request)
-        db.commit()
-        db.refresh(request)
-
-        db.add(
-            Message(
-                conversation_id=conv.id,
-                agent_request_id=request.id,
-                role=Role.user,
-                content=user_message,
-                redacted_content=None,
-                retrieval_trace=document_route_trace or None,
-            )
-        )
-        db.commit()
-
-        scheduler = self.request_scheduler or enqueue_agent_request
-        task_id = scheduler(request.id, principal_to_payload(principal))
-        request.celery_task_id = task_id
-        db.add(request)
-        db.commit()
-        db.refresh(request)
-
-        return serialize_agent_request(db, request)
-
-    # --- Main chat processing loop ---
-    def _process_chat(
-        self,
-        db: Session,
-        channel: str,
-        user_message: str,
-        external_conversation_id: Optional[str],
-        *,
-        principal: Optional[Principal] = None,
-        lang: str = "en-US",
-        candidate_document_ids: Optional[List[str]] = None,
-        document_route_trace: Optional[Dict[str, Any]] = None,
-        agent_slug: Optional[str] = None,
-        group_id: Optional[str] = None,
-        group_context: Optional[Dict[str, Any]] = None,
-        forced_document_ids: Optional[List[str]] = None,
-        persist_user_message: bool = True,
-        user_message_id: Optional[str] = None,
-        agent_request_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         trace = f"{self.name}_{uuid.uuid4().hex[:12]}"
         t0 = time.time()
@@ -1083,15 +992,7 @@ class BaseAgent:
         state = self._load_state(db, conv.id)
         if state:
             messages.append({"role": "assistant", "content": f"[state] {self._state_summary(state)}"})
-        messages.extend(
-            self._load_history(
-                db,
-                conv.id,
-                include_tools=True,
-                lang=lang_norm,
-                exclude_message_id=user_message_id,
-            )
-        )
+        messages.extend(self._load_history(db, conv.id, include_tools=True, lang=lang_norm))
 
         user_redaction = self.phi_filter.redact(user_message, language=lang_norm) if self.phi_filter else {"redacted_text": user_message, "entities": []}  # noqa
         redacted_user_text = user_redaction["redacted_text"]
@@ -1117,37 +1018,17 @@ class BaseAgent:
             )
             messages.append({"role": "assistant", "content": f"[redaction] user provided: {provided} (value hidden)"})
 
-        # persist or update user message (raw + redacted + PHI entities)
-        user_record: Message | None = None
-        if persist_user_message:
-            user_record = Message(
-                conversation_id=conv.id,
-                agent_request_id=agent_request_id,
-                role=Role.user,
-                content=user_message,
-                redacted_content=redacted_user_text,
-                retrieval_trace=effective_document_route_trace,
-            )
-            db.add(user_record)
-            db.commit()
-            db.refresh(user_record)
-        elif user_message_id:
-            user_record = (
-                db.query(Message)
-                .filter(Message.id == user_message_id, Message.conversation_id == conv.id)
-                .first()
-            )
-            if user_record:
-                user_record.redacted_content = redacted_user_text
-                user_record.retrieval_trace = effective_document_route_trace
-                if agent_request_id and not user_record.agent_request_id:
-                    user_record.agent_request_id = agent_request_id
-                db.add(user_record)
-                db.commit()
-                db.refresh(user_record)
-
-        if user_record is None:
-            raise RuntimeError("user_message_not_found")
+        # persist user message (raw + redacted + PHI entities)
+        user_record = Message(
+            conversation_id=conv.id,
+            role=Role.user,
+            content=user_message,
+            redacted_content=redacted_user_text,
+            retrieval_trace=effective_document_route_trace,
+        )
+        db.add(user_record)
+        db.commit()
+        db.refresh(user_record)
         self._persist_phi_entities(db, user_record, user_redaction.get("entities", []))
         placeholder_mapping = self._placeholder_map(db, conv.id)
 
@@ -1172,7 +1053,6 @@ class BaseAgent:
             db.add(
                 Message(
                     conversation_id=conv.id,
-                    agent_request_id=agent_request_id,
                     role=Role.assistant,
                     content="",
                     redacted_content="",
@@ -1238,7 +1118,6 @@ class BaseAgent:
                     pass
                 tool_msg = Message(
                     conversation_id=conv.id,
-                    agent_request_id=agent_request_id,
                     role=Role.tool,
                     content=tool_content,
                     redacted_content=tool_redaction["redacted_text"],
@@ -1266,7 +1145,7 @@ class BaseAgent:
             reply = final.get("reply") or reply
 
         if state_changed:
-            self._save_state(db, conv.id, state, agent_request_id=agent_request_id)
+            self._save_state(db, conv.id, state)
 
         # Restore placeholders for user-facing reply (keep redacted copy persisted)
         restored_reply = self._restore_placeholders(reply, placeholder_mapping)
@@ -1280,7 +1159,6 @@ class BaseAgent:
         db.add(
             Message(
                 conversation_id=conv.id,
-                agent_request_id=agent_request_id,
                 role=Role.assistant,
                 content=restored_reply,
                 redacted_content=reply,

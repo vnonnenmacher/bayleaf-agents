@@ -51,10 +51,6 @@ class Settings(BaseModel):
     EMBEDDING_MODELS: str = Field(default=os.getenv("EMBEDDING_MODELS", "intfloat/multilingual-e5-base"))
     EMBEDDING_DEFAULT_MODEL: str = Field(default=os.getenv("EMBEDDING_DEFAULT_MODEL", ""))
 
-    # Async request processing (Celery)
-    CELERY_BROKER_URL: str = Field(default=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"))
-    CELERY_RESULT_BACKEND: str = Field(default=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/1"))
-
     def cors_allow_origins(self) -> list[str]:
         hosts = [h.strip() for h in self.ALLOWED_HOSTS.split(",") if h.strip()]
         if not hosts:

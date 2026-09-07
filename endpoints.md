@@ -116,41 +116,26 @@ Field semantics:
 
 ```json
 {
-  "id": "request-uuid",
-  "conversation_id": "conv-id-or-external-id",
-  "user_id": "user-1",
-  "agent_slug": "treatment",
-  "channel": "bayleaf_app",
-  "state": "waiting",
-  "error_message": null,
-  "created_at": "ISO-8601",
-  "started_at": null,
-  "finished_at": null,
-  "cancelled_at": null,
-  "messages": [
+  "reply": "...",
+  "used_tools": ["current_medications"],
+  "cited_documents": [{ "name": "Clinical Guide", "uuid": "doc-1" }],
+  "retrieved_documents": [{ "name": "Clinical Guide", "uuid": "doc-1" }],
+  "citations": [
     {
-      "id": "message-uuid",
-      "role": "user",
-      "content": "I have a headache.",
-      "redacted_content": "I have a headache.",
-      "tool_name": null,
-      "tool_args": null,
-      "tool_result": null,
-      "retrieval_trace": null,
-      "cited_documents": [],
-      "citations": [],
-      "created_at": "ISO-8601"
+      "id": "c1",
+      "document_uuid": "doc-1",
+      "document_name": "Clinical Guide",
+      "chunk_ref": "doc-1#0",
+      "evidence_text": "...",
+      "retrieval_score": 0.95
     }
-  ]
+  ],
+  "safety": { "triage": "non-urgent" },
+  "trace_id": "chat_abcdef123456",
+  "conversation_id": "conv-id-or-external-id",
+  "conversation_name": "Conversation title"
 }
 ```
-
-Behavior:
-
-- `POST /agents/{agent_slug}/chat` is submit-only.
-- The endpoint returns immediately with serialized AgentRequest.
-- The full chat processing runs asynchronously.
-- Clients poll the request endpoint until terminal state.
 
 ### Chat-specific errors and constraints
 
@@ -159,61 +144,6 @@ Behavior:
 - `404 {"detail":"group_not_found"}` if `group_id` does not belong to the caller.
 - `422 {"detail":"group_inactive"}` if `group_id` exists but is inactive.
 - `409 {"detail":"conversation_group_mismatch"}` if an existing conversation is reused with a different group than originally bound.
-- `409 {"detail":"active_request_exists"}` when the conversation already has an active request in `waiting` or `processing`.
-
-## Agent request lifecycle endpoints
-
-Base prefix: `/agents/requests`
-
-### `GET /agents/requests/{agent_request_id}`
-
-Retrieve one request owned by the authenticated user.
-
-Response shape is the same as the chat submit response (serialized AgentRequest).
-
-Notes:
-
-- `messages` are ordered by `created_at` ascending.
-- Internal tool/debug/state-linked messages are included by default.
-
-States:
-
-- `waiting`
-- `processing`
-- `succeeded`
-- `failed`
-- `cancelled`
-
-Terminal states:
-
-- `succeeded`
-- `failed`
-- `cancelled`
-
-### `POST /agents/requests/{agent_request_id}/cancel`
-
-Cancel one request owned by the authenticated user.
-
-Behavior:
-
-- If current state is `waiting` or `processing`, state is changed to `cancelled`.
-- If already terminal, operation is idempotent.
-- Returns serialized AgentRequest.
-
-### `POST /agents/requests/{agent_request_id}/retry`
-
-Retry one request owned by the authenticated user.
-
-Behavior:
-
-- Allowed only when current state is `failed` or `cancelled`.
-- Creates a new AgentRequest for the same conversation context.
-- Schedules async processing for the new request.
-- Returns serialized newly-created AgentRequest.
-
-Retry error:
-
-- `409 {"detail":"agent_request_not_retryable"}` when request is not in `failed` or `cancelled`.
 
 ## Conversation groups
 
@@ -584,14 +514,12 @@ FastAPI default docs are available unless explicitly disabled by deployment sett
 
 ## Client-agent integration notes
 
-1. Submit prompts with `POST /agents/{agent_slug}/chat` and persist returned `id` (AgentRequest id).
-2. Poll `GET /agents/requests/{id}` until state is terminal (`succeeded`, `failed`, or `cancelled`).
-3. Prefer storing and reusing `conversation_id` returned by request responses.
-4. Treat `conversation_id` as opaque; it may be either external id or internal UUID depending on how the conversation started.
-5. Use conversation groups to inject stable project/event context and document scopes.
-6. For document retrieval, pass `document_uuids` whenever a strict scope is desired.
-7. Handle `308` redirects if your HTTP client does not follow redirects automatically.
-8. Expect downstream dependency failures from Bayleaf/Qdrant as structured errors under `detail.error`.
+1. Prefer storing and reusing `conversation_id` returned by chat responses.
+2. Treat `conversation_id` as opaque; it may be either external id or internal UUID depending on how the conversation started.
+3. Use conversation groups to inject stable project/event context and document scopes.
+4. For document retrieval, pass `document_uuids` whenever a strict scope is desired.
+5. Handle `308` redirects if your HTTP client does not follow redirects automatically.
+6. Expect downstream dependency failures from Bayleaf/Qdrant as structured errors under `detail.error`.
 
 ## Known contract caveats
 
