@@ -110,7 +110,7 @@ def test_forces_prefetch_when_decider_skips_and_no_recent_evidence():
         documents_tools=docs,
     )
 
-    agent.chat(
+    agent._process_chat(
         db=db,
         channel="bayleaf_app",
         user_message="Quais sao os valores normais do colesterol?",
@@ -163,7 +163,7 @@ def test_reuses_recent_evidence_without_prefetch():
     )
     db.commit()
 
-    agent.chat(
+    agent._process_chat(
         db=db,
         channel="bayleaf_app",
         user_message="O colesterol vem exclusivamente da alimentacao?",
@@ -187,7 +187,7 @@ def test_prefetch_uses_top_k_10_when_decider_returns_candidates():
         documents_tools=docs,
     )
 
-    agent.chat(
+    agent._process_chat(
         db=db,
         channel="bayleaf_app",
         user_message="Como classificar RDW de 17,5?",

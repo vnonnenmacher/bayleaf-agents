@@ -153,7 +153,7 @@ def test_base_agent_reuses_recent_evidence_when_decider_skips():
     )
     db.commit()
 
-    agent.chat(
+    agent._process_chat(
         db=db,
         channel="bayleaf_app",
         user_message="O colesterol vem da alimentacao ou do organismo?",
@@ -179,7 +179,7 @@ def test_base_agent_forces_prefetch_when_decider_skips_and_no_recent_evidence():
         use_phi_filter=False,
     )
 
-    agent.chat(
+    agent._process_chat(
         db=db,
         channel="bayleaf_app",
         user_message="Quais exames ajudam a investigar fadiga?",
@@ -207,7 +207,7 @@ def test_base_agent_skips_decider_when_documents_catalog_not_available():
         use_phi_filter=False,
     )
 
-    result = agent.chat(
+    result = agent._process_chat(
         db=db,
         channel="bayleaf_app",
         user_message="I have a headache.",

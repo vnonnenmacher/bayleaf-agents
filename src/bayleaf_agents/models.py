@@ -14,6 +14,14 @@ class Role(str, enum.Enum):
     tool = "tool"
 
 
+class AgentRequestState(str, enum.Enum):
+    waiting = "waiting"
+    processing = "processing"
+    succeeded = "succeeded"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
 class ConversationGroupType(str, enum.Enum):
     project = "project"
     event = "event"
@@ -81,15 +89,45 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     group: Mapped[Optional[ConversationGroup]] = relationship(back_populates="conversations")
+    agent_requests: Mapped[list["AgentRequest"]] = relationship(
+        back_populates="conversation", cascade="all,delete-orphan"
+    )
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation", cascade="all,delete-orphan"
     )
+
+
+class AgentRequest(Base):
+    __tablename__ = "agent_requests"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
+    user_id: Mapped[str] = mapped_column(String(100), index=True)
+    agent_slug: Mapped[str] = mapped_column(String(100), index=True)
+    channel: Mapped[str] = mapped_column(String(40), index=True)
+    state: Mapped[AgentRequestState] = mapped_column(
+        Enum(AgentRequestState), index=True, default=AgentRequestState.waiting
+    )
+    user_message: Mapped[str] = mapped_column(Text)
+    lang: Mapped[str] = mapped_column(String(20), default="pt-BR")
+    group_context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    forced_document_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    celery_task_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    conversation: Mapped[Conversation] = relationship(back_populates="agent_requests")
+    messages: Mapped[list["Message"]] = relationship(back_populates="agent_request")
 
 
 class Message(Base):
     __tablename__ = "messages"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
+    agent_request_id: Mapped[Optional[str]] = mapped_column(ForeignKey("agent_requests.id"), index=True, nullable=True)
     role: Mapped[Role] = mapped_column(Enum(Role))
     content: Mapped[str] = mapped_column(Text)
     redacted_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -102,6 +140,7 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
+    agent_request: Mapped[Optional[AgentRequest]] = relationship(back_populates="messages")
 
 
 class PHIEntity(Base):
