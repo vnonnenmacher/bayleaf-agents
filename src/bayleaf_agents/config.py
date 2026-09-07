@@ -31,6 +31,15 @@ class Settings(BaseModel):
         "postgresql+psycopg://bayleaf:bayleaf@db:5432/bayleaf_agents"
     ))
 
+    # Async chat execution (Celery + Redis)
+    REDIS_URL: str = Field(default=os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+    CELERY_BROKER_URL: str = Field(default=os.getenv("CELERY_BROKER_URL", os.getenv("REDIS_URL", "redis://localhost:6379/0")))
+    CELERY_RESULT_BACKEND: str = Field(default=os.getenv("CELERY_RESULT_BACKEND", os.getenv("REDIS_URL", "redis://localhost:6379/0")))
+    # Run tasks synchronously in-process (useful for local/dev/tests without a broker)
+    CELERY_TASK_ALWAYS_EAGER: bool = Field(
+        default=os.getenv("CELERY_TASK_ALWAYS_EAGER", "false").strip().lower() == "true"
+    )
+
     IDP_ISSUER: str = Field(default=os.getenv("IDP_ISSUER", "https://auth.bayleaf"))
     IDP_AUDIENCE_AGENT: str = Field(default=os.getenv("IDP_AUDIENCE_AGENT", "agent"))
     IDP_JWKS_URL: str = Field(default=os.getenv("IDP_JWKS_URL", "https://auth.bayleaf/.well-known/jwks.json"))

@@ -1,7 +1,7 @@
 # src/bayleaf_agents/auth/deps.py
 from fastapi import Header, HTTPException
 from typing import List, Optional, Dict, Any
-import json, base64
+import json, base64, time
 
 
 class Principal:
@@ -41,6 +41,12 @@ def require_auth(required_scopes: Optional[List[str]] = None):
 
         token = authorization.split(" ", 1)[1].strip()
         claims = _parse_unverified_jwt(token) or {}
+
+        # fail fast on an expired token instead of accepting the request and only
+        # discovering it later when the downstream Bayleaf call rejects it.
+        exp = claims.get("exp")
+        if isinstance(exp, (int, float)) and exp < time.time():
+            raise HTTPException(status_code=401, detail={"error": "token_expired"})
 
         # scopes (best-effort)
         scopes: List[str] = []

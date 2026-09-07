@@ -9,8 +9,8 @@ from ..auth.deps import Principal, require_auth
 from ..db import get_db
 from ..models import Conversation, ConversationGroup, ConversationGroupType, Message, Role, UserMetadata
 from ..schemas.chat import (
+    AgentRequestResponse,
     ChatRequest,
-    ChatResponse,
     ConversationMessage,
     ConversationMessagesResponse,
     ConversationGroupCreateRequest,
@@ -21,11 +21,17 @@ from ..schemas.chat import (
     ConversationsResponse,
     ConversationSummary,
     PaginationInfo,
-    SafetyInfo,
     UserMetadataResponse,
     UserMetadataUpsertRequest,
 )
 from ..services.agent_registry import discover_agents
+from ..services.agent_requests import (
+    cancel_agent_request,
+    find_active_agent_request_for_conversation,
+    get_owned_agent_request,
+    retry_agent_request,
+    serialize_agent_request,
+)
 from ..services.factories import (
     get_bayleaf,
     get_decider_provider,
@@ -33,7 +39,6 @@ from ..services.factories import (
     get_phi_filter,
     get_provider,
 )
-from ..tools.bayleaf import BayleafAuthError
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 _AGENT_CLASSES = discover_agents()
@@ -153,7 +158,7 @@ for slug, AgentCls in _AGENT_CLASSES.items():
         accepted = {k: v for k, v in common_kwargs.items() if k in init_params}
         agent = _AgentCls(**accepted)
         try:
-            result = agent.chat(
+            agent_request = agent.chat(
                 db=db,
                 channel=req.channel,
                 user_message=req.message,
@@ -168,34 +173,58 @@ for slug, AgentCls in _AGENT_CLASSES.items():
         except ValueError as exc:
             if str(exc) == "conversation_group_mismatch":
                 raise HTTPException(status_code=409, detail="conversation_group_mismatch") from exc
+            if str(exc) == "active_request_conflict":
+                raise HTTPException(status_code=409, detail="active_request_conflict") from exc
             raise
-        except BayleafAuthError as exc:
-            if exc.status_code == 401 and exc.error == "token_expired":
-                raise HTTPException(
-                    status_code=401,
-                    detail={"error": "token_expired", "details": exc.details},
-                ) from exc
-            raise
-        safety = SafetyInfo(triage="non-urgent")
-        return ChatResponse(
-            reply=result["reply"],
-            used_tools=result["used_tools"],
-            cited_documents=result.get("cited_documents", []),
-            retrieved_documents=result.get("retrieved_documents", []),
-            citations=result.get("citations", []),
-            safety=safety,
-            trace_id=result["trace_id"],
-            conversation_id=result["conversation_id"],
-            conversation_name=result["conversation_name"],
-        )
+        return serialize_agent_request(db, agent_request)
 
     router.add_api_route(
         f"/{slug}/chat",
         chat_endpoint,
         methods=["POST"],
-        response_model=ChatResponse,
+        response_model=AgentRequestResponse,
         name=f"{slug}-chat",
     )
+
+
+@router.get("/requests/{agent_request_id}", response_model=AgentRequestResponse)
+async def get_agent_request(
+    agent_request_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_auth()),
+):
+    user_id = _require_user_id(principal)
+    agent_request = get_owned_agent_request(db, agent_request_id=agent_request_id, user_id=user_id)
+    return serialize_agent_request(db, agent_request)
+
+
+@router.post("/requests/{agent_request_id}/cancel", response_model=AgentRequestResponse)
+async def cancel_agent_request_endpoint(
+    agent_request_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_auth()),
+):
+    user_id = _require_user_id(principal)
+    agent_request = get_owned_agent_request(db, agent_request_id=agent_request_id, user_id=user_id)
+    agent_request = cancel_agent_request(db, agent_request)
+    return serialize_agent_request(db, agent_request)
+
+
+@router.post("/requests/{agent_request_id}/retry", response_model=AgentRequestResponse)
+async def retry_agent_request_endpoint(
+    agent_request_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_auth()),
+):
+    user_id = _require_user_id(principal)
+    agent_request = get_owned_agent_request(db, agent_request_id=agent_request_id, user_id=user_id)
+    try:
+        new_request = retry_agent_request(db, agent_request)
+    except ValueError as exc:
+        if str(exc) in ("retry_not_allowed", "active_request_conflict"):
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise
+    return serialize_agent_request(db, new_request)
 
 
 @router.post("/conversation-groups", response_model=ConversationGroupSummary)
