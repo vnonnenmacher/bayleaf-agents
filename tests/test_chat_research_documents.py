@@ -93,7 +93,7 @@ def test_chat_returns_cited_and_retrieved_documents():
         raw_token="token",
     )
 
-    result = agent.chat(
+    result = agent._process_chat(
         db=db,
         channel="bayleaf_app",
         user_message="I have a headache.",

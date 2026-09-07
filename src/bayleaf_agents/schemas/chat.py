@@ -43,6 +43,35 @@ class ChatResponse(BaseModel):
     conversation_name: str
 
 
+class AgentRequestMessage(BaseModel):
+    id: str
+    role: str
+    content: str
+    redacted_content: Optional[str] = None
+    tool_name: Optional[str] = None
+    tool_args: Optional[dict] = None
+    tool_result: Optional[dict] = None
+    retrieval_trace: Optional[dict] = None
+    cited_documents: list[ResearchDocument] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
+    created_at: datetime
+
+
+class AgentRequestResponse(BaseModel):
+    id: str
+    conversation_id: str
+    user_id: str
+    agent_slug: str
+    channel: str
+    state: Literal["waiting", "processing", "succeeded", "failed", "cancelled"]
+    error_message: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    messages: list[AgentRequestMessage] = Field(default_factory=list)
+
+
 class PaginationInfo(BaseModel):
     total: int
     limit: int
