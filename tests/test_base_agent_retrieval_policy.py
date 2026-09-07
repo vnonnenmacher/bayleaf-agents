@@ -153,11 +153,11 @@ def test_base_agent_reuses_recent_evidence_when_decider_skips():
     )
     db.commit()
 
-    agent.chat(
+    agent._process_chat(
         db=db,
         channel="bayleaf_app",
         user_message="O colesterol vem da alimentacao ou do organismo?",
-        external_conversation_id="conv-1",
+        conversation_id=conv.id,
         principal=principal,
         lang="pt-BR",
         agent_slug="labcopilot",
@@ -178,13 +178,23 @@ def test_base_agent_forces_prefetch_when_decider_skips_and_no_recent_evidence():
         decider_provider=DeciderNoRetrievalProvider(),
         use_phi_filter=False,
     )
+    principal = _principal()
 
-    agent.chat(
+    conv = agent._get_or_create_conversation(
+        db,
+        "conv-2",
+        principal.user_id,
+        "bayleaf_app",
+        agent_slug="labcopilot",
+        group_id=None,
+    )
+
+    agent._process_chat(
         db=db,
         channel="bayleaf_app",
         user_message="Quais exames ajudam a investigar fadiga?",
-        external_conversation_id="conv-2",
-        principal=_principal(),
+        conversation_id=conv.id,
+        principal=principal,
         lang="pt-BR",
         agent_slug="labcopilot",
     )
@@ -206,13 +216,23 @@ def test_base_agent_skips_decider_when_documents_catalog_not_available():
         decider_provider=DeciderNoRetrievalProvider(),
         use_phi_filter=False,
     )
+    principal = _principal()
 
-    result = agent.chat(
+    conv = agent._get_or_create_conversation(
+        db,
+        "conv-3",
+        principal.user_id,
+        "bayleaf_app",
+        agent_slug="labcopilot",
+        group_id=None,
+    )
+
+    result = agent._process_chat(
         db=db,
         channel="bayleaf_app",
         user_message="I have a headache.",
-        external_conversation_id="conv-3",
-        principal=_principal(),
+        conversation_id=conv.id,
+        principal=principal,
         lang="en-US",
         agent_slug="labcopilot",
     )

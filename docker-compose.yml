@@ -18,6 +18,7 @@ services:
       - db
       - presidio-analyzer
       - qdrant
+      - redis
     environment:
       APP_ENV: dev
       HOST: 0.0.0.0
@@ -33,8 +34,38 @@ services:
       QDRANT_COLLECTION: documents
       EMBEDDING_MODELS: ${EMBEDDING_MODELS:-intfloat/multilingual-e5-base,BAAI/bge-m3}
       EMBEDDING_DEFAULT_MODEL: ${EMBEDDING_DEFAULT_MODEL:-intfloat/multilingual-e5-base}
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "8080:8080"
+    volumes:
+      - .:/app
+    profiles:
+      - dev
+
+  celery-worker-dev:
+    build:
+      context: .
+      target: test
+    command: celery -A bayleaf_agents.celery_app worker --loglevel=INFO
+    depends_on:
+      - db
+      - presidio-analyzer
+      - qdrant
+      - redis
+    environment:
+      APP_ENV: dev
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      BAYLEAF_BASE_URL: ${BAYLEAF_BASE_URL:-https://bayleaf.nonnenmacher.tech}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql+psycopg://bayleaf:bayleaf@db:5432/bayleaf_agents
+      PHI_FILTER_URL: http://presidio-analyzer:3000/analyze
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: documents
+      EMBEDDING_MODELS: ${EMBEDDING_MODELS:-intfloat/multilingual-e5-base,BAAI/bge-m3}
+      EMBEDDING_DEFAULT_MODEL: ${EMBEDDING_DEFAULT_MODEL:-intfloat/multilingual-e5-base}
+      REDIS_URL: redis://redis:6379/0
     volumes:
       - .:/app
     profiles:
@@ -48,6 +79,7 @@ services:
       - db
       - presidio-analyzer
       - qdrant
+      - redis
     env_file:
       - .env
     environment:
@@ -57,11 +89,42 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-bayleaf}:${POSTGRES_PASSWORD:-bayleaf}@db:5432/${POSTGRES_DB:-bayleaf_agents}
       PHI_FILTER_URL: http://presidio-analyzer:3000/analyze
       QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "127.0.0.1:${AGENTS_PORT:-8080}:8080"
     restart: unless-stopped
     profiles:
       - prod
+
+  celery-worker:
+    build:
+      context: .
+      target: runtime
+    command: celery -A bayleaf_agents.celery_app worker --loglevel=INFO
+    depends_on:
+      - db
+      - presidio-analyzer
+      - qdrant
+      - redis
+    env_file:
+      - .env
+    environment:
+      APP_ENV: prod
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-bayleaf}:${POSTGRES_PASSWORD:-bayleaf}@db:5432/${POSTGRES_DB:-bayleaf_agents}
+      PHI_FILTER_URL: http://presidio-analyzer:3000/analyze
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://redis:6379/0
+    restart: unless-stopped
+    profiles:
+      - prod
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
 
   presidio-analyzer:
     image: mcr.microsoft.com/presidio-analyzer:latest
@@ -87,3 +150,4 @@ services:
 volumes:
   pgdata:
   qdrant-data:
+  redis-data:

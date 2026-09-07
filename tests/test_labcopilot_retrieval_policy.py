@@ -109,13 +109,23 @@ def test_forces_prefetch_when_decider_skips_and_no_recent_evidence():
         decider_provider=DeciderNoRetrievalProvider(),
         documents_tools=docs,
     )
+    principal = _principal()
 
-    agent.chat(
+    conv = agent._get_or_create_conversation(
+        db,
+        "conv-1",
+        principal.user_id,
+        "bayleaf_app",
+        agent_slug="labcopilot",
+        group_id=None,
+    )
+
+    agent._process_chat(
         db=db,
         channel="bayleaf_app",
         user_message="Quais sao os valores normais do colesterol?",
-        external_conversation_id="conv-1",
-        principal=_principal(),
+        conversation_id=conv.id,
+        principal=principal,
         lang="pt-BR",
         agent_slug="labcopilot",
     )
@@ -163,11 +173,11 @@ def test_reuses_recent_evidence_without_prefetch():
     )
     db.commit()
 
-    agent.chat(
+    agent._process_chat(
         db=db,
         channel="bayleaf_app",
         user_message="O colesterol vem exclusivamente da alimentacao?",
-        external_conversation_id="conv-2",
+        conversation_id=conv.id,
         principal=principal,
         lang="pt-BR",
         agent_slug="labcopilot",
@@ -186,13 +196,23 @@ def test_prefetch_uses_top_k_10_when_decider_returns_candidates():
         decider_provider=DeciderNeedsRetrievalProvider(events=events),
         documents_tools=docs,
     )
+    principal = _principal()
 
-    agent.chat(
+    conv = agent._get_or_create_conversation(
+        db,
+        "conv-3",
+        principal.user_id,
+        "bayleaf_app",
+        agent_slug="labcopilot",
+        group_id=None,
+    )
+
+    agent._process_chat(
         db=db,
         channel="bayleaf_app",
         user_message="Como classificar RDW de 17,5?",
-        external_conversation_id="conv-3",
-        principal=_principal(),
+        conversation_id=conv.id,
+        principal=principal,
         lang="pt-BR",
         agent_slug="labcopilot",
     )

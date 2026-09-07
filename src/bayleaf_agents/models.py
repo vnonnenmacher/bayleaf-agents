@@ -19,6 +19,14 @@ class ConversationGroupType(str, enum.Enum):
     event = "event"
 
 
+class AgentRequestState(str, enum.Enum):
+    waiting = "waiting"
+    processing = "processing"
+    succeeded = "succeeded"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
 class ConversationGroup(Base):
     __tablename__ = "conversation_groups"
 
@@ -86,10 +94,35 @@ class Conversation(Base):
     )
 
 
+class AgentRequest(Base):
+    __tablename__ = "agent_requests"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(100), index=True)
+    agent_slug: Mapped[str] = mapped_column(String(100), index=True)
+    channel: Mapped[str] = mapped_column(String(40))
+    state: Mapped[AgentRequestState] = mapped_column(
+        Enum(AgentRequestState), default=AgentRequestState.waiting, index=True
+    )
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # internal submission context (channel/message/lang/etc.), used to reschedule on retry
+    payload: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    messages: Mapped[list["Message"]] = relationship(back_populates="agent_request")
+
+
 class Message(Base):
     __tablename__ = "messages"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
+    # nullable: the initial message may be persisted before the conversation is resolved (see AgentRequest.chat)
+    conversation_id: Mapped[Optional[str]] = mapped_column(ForeignKey("conversations.id"), index=True, nullable=True)
+    agent_request_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("agent_requests.id"), index=True, nullable=True
+    )
     role: Mapped[Role] = mapped_column(Enum(Role))
     content: Mapped[str] = mapped_column(Text)
     redacted_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -101,7 +134,8 @@ class Message(Base):
     citations: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    conversation: Mapped[Conversation] = relationship(back_populates="messages")
+    conversation: Mapped[Optional[Conversation]] = relationship(back_populates="messages")
+    agent_request: Mapped[Optional[AgentRequest]] = relationship(back_populates="messages")
 
 
 class PHIEntity(Base):

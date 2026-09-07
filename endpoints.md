@@ -35,6 +35,7 @@ Current auth behavior:
 
 - Missing or non-bearer header returns `401 {"detail":"missing_token"}`.
 - The token payload is decoded without signature verification (best-effort claim extraction).
+- An `exp` claim in the past returns `401 {"detail":{"error":"token_expired"}}` immediately, before any request processing (including async chat submission).
 - `user_id` is read from `user_id` claim, falling back to `sub`.
 - Endpoints that require an owner identity return `401 {"detail":"missing_user_id_claim"}` when neither claim is present.
 - Optional scope checks are implemented in the auth dependency but are not currently required by these routes.
@@ -90,6 +91,19 @@ Currently discovered slugs in this codebase are:
 - `treatment`
 - `labcopilot`
 
+Chat is **asynchronous**: this endpoint only submits the request and returns immediately.
+It does not wait for the assistant reply. Callers must poll the request lifecycle
+endpoint below until the request reaches a terminal state.
+
+> **Migrating from the old synchronous contract:** if your client previously read
+> `reply`/`used_tools`/`citations`/`trace_id` straight off the `POST /chat` response, that
+> response body no longer exists. Instead: (1) submit as before, but only keep the
+> returned `id` and `conversation_id`; (2) poll `GET /agents/requests/{id}` (e.g. every
+> 1-2s) until `state` is `succeeded`, `failed`, or `cancelled`; (3) find the assistant's
+> reply as the last `role: "assistant"` entry in `messages`, and read `cited_documents`/
+> `citations`/`retrieval_trace` off that same message. There is no `trace_id` field
+> anymore — use the `id` (agent request id) for correlation instead.
+
 ### Request body
 
 ```json
@@ -114,36 +128,96 @@ Field semantics:
 
 ### Response body
 
+Returns the created `AgentRequest` immediately, in `waiting` or `processing` state.
+The conversation is resolved (or created, if `conversation_id` was omitted) synchronously
+during this call, so `conversation_id` is already known on the response. The final assistant
+reply is not present yet; poll `GET /agents/requests/{id}` for it.
+
 ```json
 {
-  "reply": "...",
-  "used_tools": ["current_medications"],
-  "cited_documents": [{ "name": "Clinical Guide", "uuid": "doc-1" }],
-  "retrieved_documents": [{ "name": "Clinical Guide", "uuid": "doc-1" }],
-  "citations": [
-    {
-      "id": "c1",
-      "document_uuid": "doc-1",
-      "document_name": "Clinical Guide",
-      "chunk_ref": "doc-1#0",
-      "evidence_text": "...",
-      "retrieval_score": 0.95
-    }
-  ],
-  "safety": { "triage": "non-urgent" },
-  "trace_id": "chat_abcdef123456",
+  "id": "agent-request-uuid",
+  "user_id": "349",
+  "agent_slug": "treatment",
+  "channel": "bayleaf_app",
   "conversation_id": "conv-id-or-external-id",
-  "conversation_name": "Conversation title"
+  "state": "waiting",
+  "error_message": null,
+  "created_at": "ISO-8601",
+  "started_at": null,
+  "finished_at": null,
+  "cancelled_at": null,
+  "messages": [
+    {
+      "id": "message-uuid",
+      "conversation_id": "conv-id-or-external-id",
+      "role": "user",
+      "content": "I have a headache.",
+      "redacted_content": null,
+      "tool_name": null,
+      "tool_args": null,
+      "tool_result": null,
+      "retrieval_trace": null,
+      "cited_documents": [],
+      "citations": [],
+      "created_at": "ISO-8601"
+    }
+  ]
 }
 ```
 
 ### Chat-specific errors and constraints
 
-- `401` if missing token.
-- `401` with `detail.error=token_expired` if downstream Bayleaf token is expired during specific document-scoped operations.
+- `401` if missing token, or if the token's `exp` claim is already in the past (see Authentication section).
 - `404 {"detail":"group_not_found"}` if `group_id` does not belong to the caller.
 - `422 {"detail":"group_inactive"}` if `group_id` exists but is inactive.
 - `409 {"detail":"conversation_group_mismatch"}` if an existing conversation is reused with a different group than originally bound.
+- `409 {"detail":"active_request_conflict"}` if the resolved conversation (whether passed explicitly via `conversation_id` or freshly created) already has another active (`waiting`/`processing`) `AgentRequest` for the same caller. This check always runs, since the conversation is now always resolved synchronously before submission; a brand-new conversation can never conflict.
+
+## Agent request lifecycle
+
+`AgentRequest` is the async lifecycle owner for a chat submission. It is not a conversation
+and does not store a `conversation_id` column directly (per the ownership model), but the
+conversation is resolved synchronously in the same call that creates the request, so
+`conversation_id` is available immediately on both the request and its initial message.
+
+### States
+
+- `waiting`: created, not yet picked up by a worker.
+- `processing`: a worker is actively running the chat logic.
+- `succeeded`: terminal. Assistant reply and any tool/internal messages are in `messages`.
+- `failed`: terminal. `error_message` holds the failure reason. Any messages persisted before the failure remain.
+- `cancelled`: terminal. Set via the cancel endpoint; best-effort if already `processing`.
+
+Allowed transitions: `waiting -> processing`, `processing -> succeeded`, `processing -> failed`,
+`waiting -> cancelled`, `processing -> cancelled`.
+
+Clients should poll `GET /agents/requests/{id}` until `state` is one of the terminal states above.
+There is no automatic retry of failed requests.
+
+### `GET /agents/requests/{agent_request_id}`
+
+Returns the current `AgentRequestResponse` (same shape as the chat submit response above),
+including all messages linked to the request ordered by `created_at` ascending.
+
+Ownership is enforced: a request only resolves for the authenticated caller that created it
+(matched by `user_id` claim), otherwise `404 {"detail":"agent_request_not_found"}`.
+
+### `POST /agents/requests/{agent_request_id}/cancel`
+
+Moves an active (`waiting`/`processing`) request to `cancelled`. Idempotent if the request is
+already in a terminal state — returns the request unchanged. Same ownership rule as above
+(`404` if not owned by the caller).
+
+### `POST /agents/requests/{agent_request_id}/retry`
+
+Creates a **new** `AgentRequest` reusing the original submission payload (including the
+resolved `conversation_id`) and schedules it for processing. Returns the new `AgentRequestResponse`.
+
+- Only allowed when the original request is `failed` or `cancelled`; otherwise
+  `409 {"detail":"retry_not_allowed"}`.
+- `409 {"detail":"active_request_conflict"}` if the original request's conversation (once
+  resolvable) already has another active request for the same caller.
+- Same ownership rule as retrieve/cancel (`404` if the original request is not owned by the caller).
 
 ## Conversation groups
 
@@ -514,7 +588,7 @@ FastAPI default docs are available unless explicitly disabled by deployment sett
 
 ## Client-agent integration notes
 
-1. Prefer storing and reusing `conversation_id` returned by chat responses.
+1. Prefer storing and reusing `conversation_id` returned by chat responses (present on both `AgentRequestResponse` and each `AgentRequestMessage`).
 2. Treat `conversation_id` as opaque; it may be either external id or internal UUID depending on how the conversation started.
 3. Use conversation groups to inject stable project/event context and document scopes.
 4. For document retrieval, pass `document_uuids` whenever a strict scope is desired.

@@ -93,11 +93,20 @@ def test_chat_returns_cited_and_retrieved_documents():
         raw_token="token",
     )
 
-    result = agent.chat(
+    conv = agent._get_or_create_conversation(
+        db,
+        None,
+        principal.user_id,
+        "bayleaf_app",
+        agent_slug="labcopilot",
+        group_id=None,
+    )
+
+    result = agent._process_chat(
         db=db,
         channel="bayleaf_app",
         user_message="I have a headache.",
-        external_conversation_id=None,
+        conversation_id=conv.id,
         principal=principal,
         agent_slug="labcopilot",
     )
