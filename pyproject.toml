@@ -23,8 +23,7 @@ dependencies = [
   "python-jose>=3.5.0",
   "python-multipart",
   "sentence-transformers>=3.0.1",
-  "pypdf>=5.1.0",
-  "celery[redis]>=5.4.0"
+  "pypdf>=5.1.0"
 ]
 
 [tool.setuptools.packages.find]

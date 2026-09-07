@@ -4,14 +4,13 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from datetime import datetime
 
 from ..auth.deps import Principal, require_auth
 from ..db import get_db
-from ..models import AgentRequest, AgentRequestState, Conversation, ConversationGroup, ConversationGroupType, Message, Role, UserMetadata
+from ..models import Conversation, ConversationGroup, ConversationGroupType, Message, Role, UserMetadata
 from ..schemas.chat import (
-    AgentRequestResponse,
     ChatRequest,
+    ChatResponse,
     ConversationMessage,
     ConversationMessagesResponse,
     ConversationGroupCreateRequest,
@@ -27,7 +26,6 @@ from ..schemas.chat import (
     UserMetadataUpsertRequest,
 )
 from ..services.agent_registry import discover_agents
-from ..services.agent_requests import revoke_agent_request, serialize_agent_request
 from ..services.factories import (
     get_bayleaf,
     get_decider_provider,
@@ -39,15 +37,6 @@ from ..tools.bayleaf import BayleafAuthError
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 _AGENT_CLASSES = discover_agents()
-
-
-def _default_request_scheduler(agent_request_id: str, principal_payload: dict[str, Any]) -> str:
-    from ..services.agent_requests import enqueue_agent_request
-
-    return enqueue_agent_request(agent_request_id, principal_payload)
-
-
-request_scheduler = _default_request_scheduler
 
 
 def _require_user_id(principal: Principal) -> str:
@@ -73,17 +62,6 @@ def _resolve_user_conversation(
     if conv:
         return conv
     return q.filter(Conversation.external_id == conversation_identifier).first()
-
-
-def _resolve_owned_request(db: Session, *, owner_id: str, request_id: str) -> AgentRequest:
-    item = (
-        db.query(AgentRequest)
-        .filter(AgentRequest.id == request_id, AgentRequest.user_id == owner_id)
-        .first()
-    )
-    if not item:
-        raise HTTPException(status_code=404, detail="agent_request_not_found")
-    return item
 
 
 def _normalize_document_uuids(document_uuids: list[str] | None) -> list[str]:
@@ -174,7 +152,6 @@ for slug, AgentCls in _AGENT_CLASSES.items():
         init_params = inspect.signature(_AgentCls.__init__).parameters
         accepted = {k: v for k, v in common_kwargs.items() if k in init_params}
         agent = _AgentCls(**accepted)
-        agent.request_scheduler = request_scheduler
         try:
             result = agent.chat(
                 db=db,
@@ -191,8 +168,6 @@ for slug, AgentCls in _AGENT_CLASSES.items():
         except ValueError as exc:
             if str(exc) == "conversation_group_mismatch":
                 raise HTTPException(status_code=409, detail="conversation_group_mismatch") from exc
-            if str(exc) == "active_request_exists":
-                raise HTTPException(status_code=409, detail="active_request_exists") from exc
             raise
         except BayleafAuthError as exc:
             if exc.status_code == 401 and exc.error == "token_expired":
@@ -201,109 +176,26 @@ for slug, AgentCls in _AGENT_CLASSES.items():
                     detail={"error": "token_expired", "details": exc.details},
                 ) from exc
             raise
-        return AgentRequestResponse(**result)
+        safety = SafetyInfo(triage="non-urgent")
+        return ChatResponse(
+            reply=result["reply"],
+            used_tools=result["used_tools"],
+            cited_documents=result.get("cited_documents", []),
+            retrieved_documents=result.get("retrieved_documents", []),
+            citations=result.get("citations", []),
+            safety=safety,
+            trace_id=result["trace_id"],
+            conversation_id=result["conversation_id"],
+            conversation_name=result["conversation_name"],
+        )
 
     router.add_api_route(
         f"/{slug}/chat",
         chat_endpoint,
         methods=["POST"],
-        response_model=AgentRequestResponse,
+        response_model=ChatResponse,
         name=f"{slug}-chat",
     )
-
-
-@router.get("/requests/{agent_request_id}", response_model=AgentRequestResponse)
-async def get_agent_request(
-    agent_request_id: str,
-    db: Session = Depends(get_db),
-    principal: Principal = Depends(require_auth()),
-):
-    owner_id = _require_user_id(principal)
-    item = _resolve_owned_request(db, owner_id=owner_id, request_id=agent_request_id)
-    return AgentRequestResponse(**serialize_agent_request(db, item))
-
-
-@router.post("/requests/{agent_request_id}/cancel", response_model=AgentRequestResponse)
-async def cancel_agent_request(
-    agent_request_id: str,
-    db: Session = Depends(get_db),
-    principal: Principal = Depends(require_auth()),
-):
-    owner_id = _require_user_id(principal)
-    item = _resolve_owned_request(db, owner_id=owner_id, request_id=agent_request_id)
-
-    if item.state in (AgentRequestState.waiting, AgentRequestState.processing):
-        item.state = AgentRequestState.cancelled
-        item.cancelled_at = item.cancelled_at or datetime.utcnow()
-        item.finished_at = item.finished_at or item.cancelled_at
-        db.add(item)
-        db.commit()
-        if item.celery_task_id:
-            try:
-                revoke_agent_request(item.celery_task_id)
-            except Exception:
-                pass
-        db.refresh(item)
-
-    return AgentRequestResponse(**serialize_agent_request(db, item))
-
-
-@router.post("/requests/{agent_request_id}/retry", response_model=AgentRequestResponse)
-async def retry_agent_request(
-    agent_request_id: str,
-    db: Session = Depends(get_db),
-    principal: Principal = Depends(require_auth()),
-):
-    owner_id = _require_user_id(principal)
-    item = _resolve_owned_request(db, owner_id=owner_id, request_id=agent_request_id)
-    if item.state not in (AgentRequestState.failed, AgentRequestState.cancelled):
-        raise HTTPException(status_code=409, detail="agent_request_not_retryable")
-
-    group = item.conversation.group
-    group_context: dict[str, Any] | None = None
-    if group:
-        group_context = {
-            "group_id": group.id,
-            "type": group.type.value,
-            "metadata": group.metadata_json or {},
-            "document_uuids": _normalize_document_uuids(group.document_uuids),
-        }
-
-    common_kwargs = {
-        "provider": get_provider(),
-        "bayleaf": get_bayleaf(),
-        "phi_filter": get_phi_filter(),
-        "documents_tools": get_documents_tools(),
-        "decider_provider": get_decider_provider(),
-    }
-    agent_cls = _AGENT_CLASSES.get(item.agent_slug)
-    if not agent_cls:
-        raise HTTPException(status_code=422, detail="unknown_agent_slug")
-
-    init_params = inspect.signature(agent_cls.__init__).parameters
-    accepted = {k: v for k, v in common_kwargs.items() if k in init_params}
-    agent = agent_cls(**accepted)
-    agent.request_scheduler = request_scheduler
-
-    try:
-        result = agent.chat(
-            db=db,
-            channel=item.channel,
-            user_message=item.user_message,
-            external_conversation_id=item.conversation.external_id or item.conversation.id,
-            principal=principal,
-            lang=item.lang or "pt-BR",
-            agent_slug=item.agent_slug,
-            group_id=item.conversation.group_id,
-            group_context=group_context,
-            forced_document_ids=(item.forced_document_ids or []),
-        )
-    except ValueError as exc:
-        if str(exc) == "active_request_exists":
-            raise HTTPException(status_code=409, detail="active_request_exists") from exc
-        raise
-
-    return AgentRequestResponse(**result)
 
 
 @router.post("/conversation-groups", response_model=ConversationGroupSummary)
