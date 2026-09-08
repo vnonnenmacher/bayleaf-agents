@@ -147,15 +147,17 @@ for slug, AgentCls in _AGENT_CLASSES.items():
                 "document_uuids": _normalize_document_uuids(group.document_uuids),
             }
 
-        common_kwargs = {
-            "provider": get_provider(),
-            "bayleaf": get_bayleaf(),
-            "phi_filter": get_phi_filter(),
-            "documents_tools": get_documents_tools(),
-            "decider_provider": get_decider_provider(),
+        common_factories = {
+            "provider": get_provider,
+            "bayleaf": get_bayleaf,
+            "phi_filter": get_phi_filter,
+            "documents_tools": get_documents_tools,
+            "decider_provider": get_decider_provider,
         }
         init_params = inspect.signature(_AgentCls.__init__).parameters
-        accepted = {k: v for k, v in common_kwargs.items() if k in init_params}
+        # only construct the providers this agent class actually declares, so an unused
+        # dependency (e.g. decider_provider) can't blow up a submission that never needs it.
+        accepted = {k: factory() for k, factory in common_factories.items() if k in init_params}
         agent = _AgentCls(**accepted)
         try:
             agent_request = agent.chat(

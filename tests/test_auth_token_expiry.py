@@ -5,6 +5,8 @@ import time
 from fastapi.testclient import TestClient
 
 from bayleaf_agents.app import create_app
+from bayleaf_agents.llm.mock import MockProvider
+from bayleaf_agents.routers import agents as agents_router
 
 
 def _unverified_jwt(payload: dict) -> str:
@@ -31,7 +33,12 @@ def test_chat_rejects_expired_token_before_submitting_agent_request():
     assert r.json() == {"detail": {"error": "token_expired"}}
 
 
-def test_chat_accepts_token_with_future_expiry():
+def test_chat_accepts_token_with_future_expiry(monkeypatch):
+    # never depend on ambient LLM_PROVIDER/DECIDER_LLM_PROVIDER/OPENAI_API_KEY config;
+    # this test only cares that auth doesn't reject a valid token, not LLM behavior.
+    monkeypatch.setattr(agents_router, "get_provider", lambda: MockProvider())
+    monkeypatch.setattr(agents_router, "get_decider_provider", lambda: MockProvider())
+
     c = TestClient(create_app())
     valid_token = _unverified_jwt({"user_id": "349", "exp": int(time.time()) + 3600})
 

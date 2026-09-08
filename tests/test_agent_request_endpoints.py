@@ -9,7 +9,9 @@ from sqlalchemy.pool import StaticPool
 
 from bayleaf_agents.app import create_app
 from bayleaf_agents.db import get_db
+from bayleaf_agents.llm.mock import MockProvider
 from bayleaf_agents.models import AgentRequest, AgentRequestState, Base
+from bayleaf_agents.routers import agents as agents_router
 from bayleaf_agents.services import agent_requests as agent_requests_service
 
 
@@ -28,6 +30,11 @@ def _client(monkeypatch):
     # avoid touching the real Celery/Redis broker; endpoint tests only assert on the
     # synchronous submit/retrieve/cancel/retry contract, not on worker execution.
     monkeypatch.setattr(agent_requests_service, "schedule_process_chat", lambda *args, **kwargs: None)
+
+    # never depend on ambient LLM_PROVIDER/DECIDER_LLM_PROVIDER/OPENAI_API_KEY config;
+    # chat() never calls the LLM, but agent construction still requires a provider instance.
+    monkeypatch.setattr(agents_router, "get_provider", lambda: MockProvider())
+    monkeypatch.setattr(agents_router, "get_decider_provider", lambda: MockProvider())
 
     engine = create_engine(
         "sqlite://",

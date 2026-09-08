@@ -34,15 +34,16 @@ def _build_agent(agent_slug: str) -> BaseAgent:
     agent_cls = _agent_classes().get(agent_slug)
     if agent_cls is None:
         raise ValueError(f"unknown_agent_slug:{agent_slug}")
-    common_kwargs = {
-        "provider": get_provider(),
-        "bayleaf": get_bayleaf(),
-        "phi_filter": get_phi_filter(),
-        "documents_tools": get_documents_tools(),
-        "decider_provider": get_decider_provider(),
+    common_factories = {
+        "provider": get_provider,
+        "bayleaf": get_bayleaf,
+        "phi_filter": get_phi_filter,
+        "documents_tools": get_documents_tools,
+        "decider_provider": get_decider_provider,
     }
     init_params = inspect.signature(agent_cls.__init__).parameters
-    accepted = {k: v for k, v in common_kwargs.items() if k in init_params}
+    # only construct the providers this agent class actually declares (see routers/agents.py).
+    accepted = {k: factory() for k, factory in common_factories.items() if k in init_params}
     return agent_cls(**accepted)
 
 
